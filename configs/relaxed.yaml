@@ -1,0 +1,6 @@
+# 宽松版：放量倍数降到 1.8，信号更多，适合波动小 / 成交量平滑的标的（指数、黄金、大盘股）
+signal:
+  reclaim_vol_mult: 1.8
+  min_wave_move: 0.15
+top:
+  min_wave_move: 0.25

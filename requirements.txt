@@ -1,0 +1,8 @@
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+yfinance>=0.2.40
+pyyaml>=6.0
+# optional data sources
+# akshare>=1.12     # A股/指数更准的成交量
+# ccxt>=4.0         # 交易所加密货币

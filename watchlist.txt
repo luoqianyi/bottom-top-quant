@@ -1,0 +1,8 @@
+# 一行一个标的，# 后面是注释。默认数据源 yahoo；需要别的数据源写成  akshare:600519  /  ccxt:binance:BTC/USDT
+600519.SS     # 贵州茅台
+300750.SZ     # 宁德时代
+0700.HK       # 腾讯
+AAPL
+NVDA
+BTC-USD
+GC=F          # 黄金期货

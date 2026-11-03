@@ -1,0 +1,7 @@
+# 加密 / 期货：允许 4/4 逃顶后反手做空
+signal:
+  min_wave_move: 0.25
+top:
+  min_wave_move: 0.40
+risk:
+  allow_short: true

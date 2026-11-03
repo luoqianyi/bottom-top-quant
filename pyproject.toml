@@ -1,0 +1,17 @@
+[project]
+name = "btq"
+version = "0.1.0"
+description = "四证抄底 / 四证逃顶 量化系统：地量 + 背离 + 速度阻力扇 + 锚定VWAP"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.0", "numpy>=1.24", "matplotlib>=3.7", "yfinance>=0.2.40", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+cn = ["akshare>=1.12"]
+crypto = ["ccxt>=4.0"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+btq = "btq.cli:main"
+
+[tool.setuptools]
+packages = ["btq"]

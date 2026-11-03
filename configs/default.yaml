@@ -1,0 +1,9 @@
+# 严格版：完全按视频的四证参数
+signal:
+  volume_window: 60        # 地量 = 近60日最小量
+  reclaim_vol_mult: 2.5    # 放量站回 = 量 >= 前5日均量 2.5 倍
+  fan_ratio: 0.5           # 收盘站上速度阻力扇 0.5 线
+risk:
+  initial_frac: 0.5        # 先上半仓
+  add_frac: 0.5            # 回踩成本线没破 加仓
+  stop_below_low: 0.03     # 止损 最低点下方 3%

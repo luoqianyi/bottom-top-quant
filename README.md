@@ -159,7 +159,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 
 ### 5）用 GitHub Actions 每天自动扫描
 
-`market-close.yml` 每次收盘生成首屏时，如果仓库 Settings → Secrets → Actions 里配了 `ALERT_WEBHOOK`，会把当天结论为 入场 / 离场 / 减仓 的标的推送出去；没配就只更新网页，不会报错。
+`market-close.yml` 每次收盘生成首屏时，如果仓库 Settings → Secrets → Actions 里配了 `ALERT_WEBHOOK`，会把当天结论为 入场 / 离场 / 减仓 的标的推送出去；没配就只更新网页，不会报错。飞书、钉钉、企业微信机器人地址都能直接填，消息格式按地址自动适配；机器人如果开了「自定义关键词」安全设置，关键词填 `四证`。
 
 ## 五、标的写法（不限市场）
 

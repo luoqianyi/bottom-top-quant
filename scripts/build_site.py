@@ -73,9 +73,9 @@ def main():
     hits = [it for it in items if it["verdict"] in ("入场", "离场", "减仓")]
     if a.webhook and hits:
         text = "四证收盘结论 " + ov["generated"] + "\n" + "\n".join(f"[{it['verdict']}] {it['name']} {it['close']} ({it['chg_pct']:+.2f}%) {it['reason']}" for it in hits)
-        body = json.dumps({"msgtype": "text", "text": {"content": text}, "content": text}).encode()
+        from btq.notify import post
         try:
-            urllib.request.urlopen(urllib.request.Request(a.webhook, data=body, headers={"Content-Type": "application/json"}), timeout=10).read()
+            post(a.webhook, text)
             print("pushed", len(hits))
         except Exception as ex:
             print("push failed:", ex)

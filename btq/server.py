@@ -275,9 +275,8 @@ def alert(r: AlertReq):
     sent = False
     if r.webhook and lines:
         text = "四证量化提醒\n" + "\n".join(lines)
-        body = json.dumps({"msgtype": "text", "text": {"content": text}, "content": text}).encode()
-        req = urllib.request.Request(r.webhook, data=body, headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=10).read()
+        from .notify import post
+        post(r.webhook, text)
         sent = True
     return dict(hits=lines, sent=sent)
 

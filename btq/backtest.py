@@ -139,7 +139,7 @@ class Backtester:
                     if b.fired and key not in used_waves:
                         used_waves.add(key)
                         self.signals.append(dict(date=self.df.index[t], side="bottom", score=4, close=c,
-                                                 stop=b.stop, avwap=b.avwap, targets=b.targets))
+                                                 stop=b.stop, avwap=b.avwap, targets=[round(float(x), 4) for x in b.targets]))
                         pending.append(("open_long", b))
                     elif cfg.risk.allow_short:
                         tp = e.top(t)
@@ -147,14 +147,14 @@ class Backtester:
                         if tp.fired and k2 not in used_waves:
                             used_waves.add(k2)
                             self.signals.append(dict(date=self.df.index[t], side="top", score=4, close=c,
-                                                     stop=tp.stop, avwap=tp.avwap, targets=tp.targets))
+                                                     stop=tp.stop, avwap=tp.avwap, targets=[round(float(x), 4) for x in tp.targets]))
                             pending.append(("open_short", tp))
                 elif p.side == 1:
                     aw = e.avwap(p.anchor)[t] if p.anchor is not None else np.nan
                     tp = e.top(t)
                     if tp.wave_ok and tp.score >= cfg.top.exit_score:
                         self.signals.append(dict(date=self.df.index[t], side="top", score=tp.score, close=c,
-                                                 stop=tp.stop, avwap=tp.avwap, targets=tp.targets))
+                                                 stop=tp.stop, avwap=tp.avwap, targets=[round(float(x), 4) for x in tp.targets]))
                         pending.append(("exit", "逃顶 4/4 清仓"))
                         if cfg.risk.allow_short:
                             pending.append(("flip_short", tp))

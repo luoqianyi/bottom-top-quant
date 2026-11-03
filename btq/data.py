@@ -31,7 +31,7 @@ def load_yahoo(symbol: str, start=None, end=None, interval="1d") -> pd.DataFrame
     import yfinance as yf
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        df = yf.download(symbol, start=start, end=end, interval=interval, progress=False, auto_adjust=True)
+        df = yf.download(symbol, start=start or "2010-01-01", end=end, interval=interval, progress=False, auto_adjust=True)
     if df is None or df.empty:
         raise ValueError(f"no data for {symbol}")
     if isinstance(df.columns, pd.MultiIndex):

@@ -27,7 +27,14 @@ def print_scan(symbol, res, df):
         name = "抄底" if side == "bottom" else "逃顶"
         flags = [ev.e1_volume, ev.e2_divergence, ev.e3_speed, ev.e4_cost]
         marks = "  ".join(("✔" if f else "✘") + lab for f, lab in zip(flags, LABELS[side]))
-        verdict = "信号成立" if ev.fired else ("四证不齐，一手别动" if ev.wave_ok else "未形成有效波段")
+        if ev.fired:
+            verdict = "信号成立"
+        elif not ev.wave_ok:
+            verdict = "未形成有效波段"
+        elif side == "top" and ev.score >= 3:
+            verdict = "三证已现，先减半仓"
+        else:
+            verdict = "四证不齐，一手别动" if side == "bottom" else "四证不齐，继续持有"
         print(f"  [{name}] 证据 {ev.score}/4  {verdict}")
         print(f"     {marks}")
         if ev.wave_ok:
@@ -66,6 +73,13 @@ def main(argv=None):
         if name == "watch":
             s.add_argument("--every", type=int, default=3600, help="seconds between checks")
             s.add_argument("--webhook", default=None, help="POST alerts as JSON to this URL (企业微信/飞书/钉钉/Discord)")
+    s = sub.add_parser("case", help="zoomed chart of one signal date")
+    s.add_argument("symbol")
+    s.add_argument("--date", required=True)
+    s.add_argument("--side", default="bottom", choices=["bottom", "top"])
+    s.add_argument("--source", default="yahoo")
+    s.add_argument("--config", default=None)
+    s.add_argument("--out", default="case.png")
     s = sub.add_parser("alert", help="scan a watchlist once and push 3/4+ alerts (for cron / GitHub Actions)")
     s.add_argument("--watchlist", default="watchlist.txt")
     s.add_argument("--config", default=None)
@@ -89,6 +103,13 @@ def main(argv=None):
             ep = bt.episodes()
             if not ep.empty:
                 print(ep.to_string(index=False))
+    elif a.cmd == "case":
+        import pandas as pd
+        from .report import plot_case
+        df = data.load(a.symbol, a.source, None, None)
+        t = int(df.index.searchsorted(pd.Timestamp(a.date), side="right") - 1)
+        ev = plot_case(df, cfg, t, a.symbol, a.out, a.side)
+        print(f"{a.symbol} {df.index[t].date()} {a.side} score {ev.score}/4 -> {a.out}")
     elif a.cmd == "alert":
         from .notify import send
         hits = 0

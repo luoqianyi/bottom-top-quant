@@ -62,16 +62,11 @@ pip install -r requirements.txt
 python -m btq scan 600519.SS AAPL BTC-USD 0700.HK
 ```
 
-输出示例：
+实测输出（2026-11-03 收盘，宽松版参数）：
 
-```
-== BTC-USD  2026-11-03  close 76,688.0078
-  [抄底] 证据 1/4  未形成有效波段
-     ✔地量  ✘底背离  ✘跌速(站上扇形0.5线)  ✘成本线(放量站回锚定VWAP)
-  [逃顶] 证据 4/4  信号成立
-     ✔天量/量价背离  ✔顶背离  ✔涨速(跌破扇形0.5线)  ✔成本线(跌破锚定VWAP)
-     成本线 80,285.1439  扇形0.5线 88,673.0241  止损 89,984.6705  目标 77,861.1034, 71,990.3536
-```
+![scan](docs/img/scan.png)
+
+逃顶 3/4 时提示"三证已现，先减半仓"，4/4 时提示"信号成立"。
 
 ### 2）回测
 
@@ -81,7 +76,17 @@ python -m btq backtest 300750.SZ --start 2015-01-01 --config configs/relaxed.yam
 
 输出到 `reports/<标的>/`：`metrics.json`（收益、回撤、夏普、胜率、盈亏比，以及和买入持有的对比）、`trades.csv`（每笔交易）、`fills.csv`（每次成交和原因）、`signals.csv`、`equity.csv`、`chart.png`。
 
-### 3）盯盘和推送
+### 3）单个信号放大图：把四证画出来
+
+```bash
+export BTQ_FONT=/path/to/NotoSansSC-Regular.otf   # 可选：图里显示中文需要一个中文字体
+python -m btq case 300750.SZ --date 2019-11-19 --config configs/relaxed.yaml --out case.png
+python -m btq case BTC-USD --date 2026-11-03 --side top --out top.png
+```
+
+图里会画出：K 线、锚定 VWAP（成本线）、速度阻力扇（0.382 / 0.5 / 0.618）、地量或天量锚点、背离连线、止损和目标位，以及次日开盘的进场或离场点。
+
+### 4）盯盘和推送
 
 ```bash
 # 扫一次自选股，3/4 以上推送（适合 crontab）
@@ -93,7 +98,7 @@ python -m btq watch BTC-USD ETH-USD --every 3600 --webhook "..."
 
 webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）和 `content`（通用格式），飞书、Discord 稍改一下 `btq/notify.py` 就能用。
 
-### 4）用 GitHub Actions 每天自动扫描
+### 5）用 GitHub Actions 每天自动扫描
 
 仓库里自带 `.github/workflows/daily-scan.yml`。工作日北京时间 16:30（A股/港股收盘后）和 05:30（美股收盘后）各跑一次。
 在仓库的 Settings → Secrets → Actions 里加上 `ALERT_WEBHOOK`，再改 `watchlist.txt`，就能每天收到推送。
@@ -118,14 +123,38 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 
 所有参数见 `btq/config.py`，在 YAML 里写哪个就覆盖哪个。
 
-## 六、回测参考（2015-01-01 起，日线，佣金和滑点各 0.05%）
+## 六、实测截图
+
+### 抄底案例 1：宁德时代 300750.SZ，2019-11-19（宽松版）
+
+地量第一天作为锚点，价格新低但 DIF 抬高（底背离），收盘站上速度扇 0.5 线，同时放量站回成本线，四证齐全。次日开盘先上半仓，之后沿着成本线一路上行。这一笔在回测里赚了 +47%。
+
+![300750 抄底](docs/img/case_300750_bottom.png)
+
+### 抄底案例 2：BTC-USD，2021-07-30（宽松版）
+
+从 6 万美元跌到 3 万附近：先出现底背离，然后地量，再放量站回成本线并突破扇形 0.5 线。
+
+![BTC 抄底](docs/img/case_btc_bottom.png)
+
+### 逃顶案例：BTC-USD，2026-11-03（严格版，今天的实时信号）
+
+8 月出现天量，9 月底价格创新高但 DIF 没有跟上（顶背离），之后跌破扇形 0.5 线，又跌破从天量日开始算的成本线，逃顶 4/4。
+
+![BTC 逃顶](docs/img/case_btc_top.png)
+
+### 完整回测：宁德时代 300750.SZ（宽松版）
+
+![300750 回测](docs/img/backtest_300750.png)
+
+## 七、回测参考（2015-01-01 至 2026-11-03，日线，佣金和滑点各 0.05%）
 
 | 标的 | 严格版 收益 / 笔数 | 宽松版 收益 / 笔数 / 胜率 | 同期买入持有 |
 |------|-----------------|--------------------------|------------|
-| 300750.SZ 宁德时代 | +0.6% / 1 | +47.8% / 4 / 75% | +1260% |
-| BTC-USD | +15.0% / 2 | +13.9% / 5 / 80% | +24290% |
+| 300750.SZ 宁德时代（2018 年上市） | +0.6% / 1 | +47.8% / 4 / 75% | +1255% |
+| BTC-USD | +15.0% / 2 | +13.9% / 5 / 80% | +24449% |
 | AAPL | 0 笔 | +4.3% / 1 / 100% | +1300% |
-| 0700.HK 腾讯 | 0 笔 | -1.0% / 3 / 33% | +307% |
+| 0700.HK 腾讯 | 0 笔 | -1.0% / 3 / 33% | +306% |
 | 600519.SS 茅台 | -2.7% / 1 | +0.7% / 2 / 50% | +916% |
 
 结论：
@@ -134,7 +163,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 2. 单笔胜率不错，最大回撤很小，但大部分时间空仓，所以总收益远远跑不赢长牛标的的买入持有。
 3. 更合理的用法：把它当成**进场过滤器 / 提醒器**，用来盯一篮子标的；或者和你自己的长期仓位配合使用（底部加仓、顶部减仓）。
 
-## 七、项目结构
+## 八、项目结构
 
 ```
 btq/
@@ -144,7 +173,8 @@ btq/
   report.py       图表和 CSV / JSON 报告
   data.py         Yahoo / akshare / ccxt / CSV 数据接口
   notify.py       Webhook 推送
-  cli.py          scan / backtest / alert / watch 命令
+  cli.py          scan / backtest / case / alert / watch 命令
+docs/img/         README 里的实测截图
 configs/          参数预设
 tests/            单元测试（pytest）
 ```

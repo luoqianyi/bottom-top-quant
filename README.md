@@ -78,6 +78,17 @@ python -m btq serve            # 浏览器打开 http://127.0.0.1:8000
 
 <img src="docs/img/web_mobile.png" width="320" />
 
+### 接入大模型（网页里直接配置，Key 只存在浏览器）
+
+详情页右侧「AI 量化」→「◇ 模型」第一张卡就是大模型设置：选服务商（OpenRouter、DeepSeek、硅基流动、通义千问、Kimi、智谱、Groq、OpenAI、本机 Ollama，或自定义），填接口地址、模型名、API Key，点「测试连接」再「保存」。
+
+- 配好以后，「AI 分析当前图表」的第 4 步会由大模型流式生成深度解读，「对话」也改由大模型回答；模型拿到的是当前图表的四证、评分和交易计划 JSON，系统提示词可以自己改。
+- 所有设置存在本机浏览器的 localStorage，请求从浏览器直接发到你填的地址，不经过本项目任何服务器（GitHub Pages 上也能用）。点「清除」即删除。
+- 部分服务商不允许浏览器跨域直连（CORS），测试会提示；换一家或用本地 `btq serve` + 环境变量 `BTQ_LLM_*` 走服务端。
+- 建议用设了额度上限的 Key。
+
+![大模型设置](docs/img/web_llm_config.png)
+
 ### 在线演示（GitHub Pages）
 
 仓库自带 `.github/workflows/market-close.yml`：工作日北京时间 15:40（A股收盘后）、16:40（港股收盘后）、05:40（美股收盘后）各跑一次，拉 `markets.yaml` 里约 37 个指数/期货/汇率的当天行情，跑四证，生成**首屏收盘结论**和每个标的的详情页，发布到 `gh-pages` 分支。

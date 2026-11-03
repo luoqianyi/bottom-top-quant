@@ -212,6 +212,7 @@ async function analyze(quiet) {
     showScores(a); showSignal(a);
     const s3 = $('#st3'); s3.classList.replace('run', 'done'); s3.querySelector('.st').textContent = '✓';
     $('#stepsTitle').textContent = '分析完成'; $('#stepsTime').textContent = ((performance.now() - t0) / 1000).toFixed(1) + ' 秒';
+    if (llmReady() && LLM.auto && !quiet) { s3.querySelector('.muted').textContent = '由 ' + LLM.model + ' 生成'; llmInterpret(a); }
   } catch (e) { toast(e.message); $('#stepsTitle').textContent = '分析失败'; }
   finally { btn.disabled = false; btn.innerHTML = '✦ AI 分析当前图表'; }
 }
@@ -298,13 +299,100 @@ async function replayStep(dir) {
 }
 function stopPlay() { clearInterval(playTimer); playTimer = null; $('#rpPlay').textContent = '▶'; }
 
+
+// ------------------------------------------------------------------ browser LLM (OpenAI-compatible; all settings stay in localStorage)
+const PROVIDERS = [
+  {k: 'openrouter', n: 'OpenRouter', base: 'https://openrouter.ai/api/v1', models: ['deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini']},
+  {k: 'deepseek', n: 'DeepSeek', base: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner']},
+  {k: 'siliconflow', n: '硅基流动', base: 'https://api.siliconflow.cn/v1', models: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct']},
+  {k: 'dashscope', n: '通义千问（百炼）', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo']},
+  {k: 'moonshot', n: 'Kimi（Moonshot）', base: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-8k', 'kimi-latest']},
+  {k: 'zhipu', n: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-flash', 'glm-4-plus']},
+  {k: 'groq', n: 'Groq', base: 'https://api.groq.com/openai/v1', models: ['llama-3.3-70b-versatile', 'qwen-qwq-32b']},
+  {k: 'openai', n: 'OpenAI', base: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o']},
+  {k: 'ollama', n: 'Ollama（本机）', base: 'http://localhost:11434/v1', models: ['qwen2.5:14b', 'llama3.1:8b']},
+  {k: 'custom', n: '自定义', base: '', models: []},
+];
+const DEFAULT_SYS = '你是一个严谨的量化交易研究助手，只依据给你的图表分析 JSON（四证抄底/四证逃顶规则、综合评分、交易计划）回答，用简体中文，简洁具体，给出数字。不要编造 JSON 里没有的数据；规则没成立时要直说。最后一句提醒：仅供研究学习，不构成投资建议。';
+const LLM = Object.assign({provider: 'openrouter', base: '', model: '', key: '', auto: true, stream: true, temp: 0.3, sys: ''}, JSON.parse(localStorage.btqLLM || '{}'));
+const llmReady = () => !!(LLM.base && LLM.model && (LLM.key || /localhost|127\.0\.0\.1/.test(LLM.base)));
+function llmContext(a) {
+  const slim = {标的: S.name || a.symbol, 代码: a.symbol, 日期: a.date, 现价: a.price, 方向: a.direction, 周期: a.period?.name, 模型: a.model,
+    四证: a.evidence, 综合评分: a.scores, 交易计划: a.plan, 规则解读: a.interpretation};
+  return '当前图表分析数据（JSON）：\n' + JSON.stringify(slim);
+}
+async function llmCall(messages, onDelta) {
+  const url = LLM.base.replace(/\/+$/, '') + '/chat/completions';
+  const headers = {'Content-Type': 'application/json'};
+  if (LLM.key) headers.Authorization = 'Bearer ' + LLM.key;
+  if (/openrouter\.ai/.test(url)) { headers['HTTP-Referer'] = location.origin; headers['X-Title'] = 'btq'; }
+  const stream = LLM.stream && !!onDelta;
+  let r;
+  try { r = await fetch(url, {method: 'POST', headers, body: JSON.stringify({model: LLM.model, messages, temperature: Number(LLM.temp) || 0.3, stream})}); }
+  catch (e) { throw new Error('连不上接口（网络或跨域 CORS 被拒）。这家服务商可能不允许浏览器直连，换 OpenRouter / DeepSeek / 硅基流动 试试。'); }
+  if (!r.ok) { const t = await r.text(); let m = t; try { m = JSON.parse(t).error?.message || t; } catch (e) {} throw new Error(`HTTP ${r.status}：${String(m).slice(0, 200)}`); }
+  if (!stream) { const j = await r.json(); const out = j.choices?.[0]?.message?.content || ''; onDelta && onDelta(out, out); return out; }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', out = '';
+  for (;;) {
+    const {value, done} = await rd.read(); if (done) break;
+    buf += dec.decode(value, {stream: true}); const lines = buf.split('\n'); buf = lines.pop();
+    for (const ln of lines) {
+      const l = ln.trim(); if (!l.startsWith('data:')) continue; const d = l.slice(5).trim(); if (d === '[DONE]') continue;
+      try { const j = JSON.parse(d); const piece = j.choices?.[0]?.delta?.content || ''; if (piece) { out += piece; onDelta(piece, out); } } catch (e) {}
+    }
+  }
+  return out;
+}
+const llmMsgs = (a, q, history) => [{role: 'system', content: (LLM.sys || DEFAULT_SYS) + '\n\n' + llmContext(a)}, ...(history || []).slice(-8), {role: 'user', content: q}];
+async function llmInterpret(a) {
+  const ai = $('#sigAi'); ai.classList.remove('hidden'); ai.classList.add('typing'); ai.textContent = 'AI 解读中…';
+  try {
+    await llmCall(llmMsgs(a, '请用 150 字以内深度解读这张图：当前结构、四证进度、最大的风险点、接下来该盯什么价位或信号。'), (p, all) => { ai.textContent = 'AI（' + LLM.model + '）：' + all; });
+  } catch (e) { ai.textContent = 'AI 解读失败：' + e.message; }
+  finally { ai.classList.remove('typing'); }
+}
+function llmLabel() {
+  const st = $('#llmState'); if (!st) return;
+  st.textContent = llmReady() ? '已启用' : '未配置'; st.className = 'pill ' + (llmReady() ? 'on' : '');
+  $('#chatEngine').textContent = llmReady() ? `由大模型回答 · ${LLM.model}（浏览器直连）` : '由规则引擎回答 · 在「模型」里配置大模型后改由大模型回答';
+}
+function llmForm() {
+  $('#llmProvider').innerHTML = PROVIDERS.map(p => `<option value="${p.k}">${p.n}</option>`).join('');
+  const fill = () => { const p = PROVIDERS.find(x => x.k === $('#llmProvider').value); $('#llmModels').innerHTML = (p?.models || []).map(m => `<option value="${m}">`).join(''); return p; };
+  $('#llmProvider').value = LLM.provider; fill();
+  $('#llmBase').value = LLM.base || PROVIDERS.find(x => x.k === LLM.provider)?.base || '';
+  $('#llmModel').value = LLM.model; $('#llmKey').value = LLM.key; $('#llmAuto').checked = LLM.auto; $('#llmStream').checked = LLM.stream;
+  $('#llmTemp').value = LLM.temp; $('#llmSys').value = LLM.sys || DEFAULT_SYS;
+  $('#llmProvider').onchange = () => { const p = fill(); if (p.base) $('#llmBase').value = p.base; if (p.models[0]) $('#llmModel').value = p.models[0]; };
+  $('#llmEye').onclick = () => { const k = $('#llmKey'); k.type = k.type === 'password' ? 'text' : 'password'; $('#llmEye').textContent = k.type === 'password' ? '显示' : '隐藏'; };
+  const read = () => Object.assign(LLM, {provider: $('#llmProvider').value, base: $('#llmBase').value.trim(), model: $('#llmModel').value.trim(), key: $('#llmKey').value.trim(),
+    auto: $('#llmAuto').checked, stream: $('#llmStream').checked, temp: Number($('#llmTemp').value) || 0.3, sys: $('#llmSys').value.trim() === DEFAULT_SYS ? '' : $('#llmSys').value.trim()});
+  $('#llmSave').onclick = () => { read(); localStorage.btqLLM = JSON.stringify(LLM); llmLabel(); toast(llmReady() ? '已保存，只存在本浏览器' : '已保存，但还缺接口地址、模型或 Key'); };
+  $('#llmClear').onclick = () => { localStorage.removeItem('btqLLM'); Object.assign(LLM, {base: '', model: '', key: '', sys: ''}); llmForm(); llmLabel(); toast('已清除本浏览器里的大模型配置'); };
+  $('#llmTest').onclick = async () => {
+    read(); const info = $('#llmInfo'), st = $('#llmState'); info.textContent = '测试中…';
+    try { const t0 = performance.now(); const out = await llmCall([{role: 'user', content: '只回复两个字：在线'}]);
+      info.textContent = `连接成功（${((performance.now() - t0) / 1000).toFixed(1)} 秒）：${out.slice(0, 40)}。记得点「保存」。`; st.textContent = '可用'; st.className = 'pill on';
+    } catch (e) { info.textContent = '失败：' + e.message; st.textContent = '失败'; st.className = 'pill err'; }
+  };
+  llmLabel();
+}
+
 // ------------------------------------------------------------------ chat
 function addMsg(text, who) { const el = document.createElement('div'); el.className = 'msg ' + who; el.textContent = text; $('#chatLog').appendChild(el); el.scrollIntoView({block: 'end'}); return el; }
 async function ask(q) {
   if (!q.trim()) return; addMsg(q, 'me'); const w = addMsg('思考中…', 'bot');
+  if (llmReady()) {
+    try {
+      if (!S.analysis) await analyze(true);
+      const out = await llmCall(llmMsgs(S.analysis, q, S.history), (p, all) => { w.textContent = all; w.scrollIntoView({block: 'end'}); });
+      w.textContent = out || w.textContent; S.history.push({role: 'user', content: q}, {role: 'assistant', content: out}); llmLabel();
+    } catch (e) { w.textContent = '大模型出错：' + e.message; }
+    return;
+  }
   try {
     const r = await api('/api/chat', reqBody({question: q, history: S.history}));
-    w.textContent = r.answer; $('#chatEngine').textContent = r.engine === 'llm' ? '由大模型回答（BTQ_LLM_* 已配置）' : '由规则引擎回答 · 配置 BTQ_LLM_API_KEY 可接入大模型';
+    w.textContent = r.answer; $('#chatEngine').textContent = r.engine === 'llm' ? '由大模型回答（服务端 BTQ_LLM_* 已配置）' : '由规则引擎回答 · 在「模型」里配置大模型后改由大模型回答';
     S.history.push({role: 'user', content: q}, {role: 'assistant', content: r.answer});
   } catch (e) { w.textContent = '出错了：' + e.message; }
 }
@@ -401,6 +489,7 @@ setInterval(() => $('#clock').textContent = new Date().toLocaleTimeString('zh-CN
 
 // boot
 (async () => {
+  llmForm();
   try { S.presets = await api('/api/presets'); renderPresets(); } catch (e) { toast(e.message); }
   try { const w = await api('/api/watchlist'); $('#watch').value = w.join('\n'); $('#symlist').innerHTML = w.map(s => `<option value="${s}">`).join('');
     if (S.demo && !S.demoIndex.symbols.includes(S.symbol)) S.symbol = S.demoIndex.symbols[0];

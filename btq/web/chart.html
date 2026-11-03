@@ -123,6 +123,21 @@
     </div>
 
     <div class="tab hidden" id="tab-model">
+      <div class="card glow" id="llmCard">
+        <div class="ct between"><div><b>✦ 大模型</b><div class="muted s">浏览器直连 · 兼容 OpenAI 接口</div></div><span class="pill" id="llmState">未配置</span></div>
+        <label class="fld">服务商 <select id="llmProvider"></select></label>
+        <label class="fld">接口地址 Base URL <input id="llmBase" placeholder="https://openrouter.ai/api/v1" spellcheck="false" autocomplete="off" /></label>
+        <label class="fld">模型 <input id="llmModel" placeholder="例如 deepseek/deepseek-chat" spellcheck="false" autocomplete="off" list="llmModels" /><datalist id="llmModels"></datalist></label>
+        <label class="fld">API Key <span class="keyrow"><input id="llmKey" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off" /><button type="button" class="ghost sm" id="llmEye">显示</button></span></label>
+        <div class="row wrap">
+          <label class="chk"><input type="checkbox" id="llmAuto" checked /> 分析后自动生成 AI 深度解读</label>
+          <label class="chk"><input type="checkbox" id="llmStream" checked /> 流式输出</label>
+        </div>
+        <label class="fld">温度 <input id="llmTemp" type="number" min="0" max="1.5" step="0.1" value="0.3" /></label>
+        <details><summary class="muted s">自定义系统提示词</summary><textarea id="llmSys" rows="5" spellcheck="false"></textarea></details>
+        <div class="row"><button class="primary sm" id="llmSave">保存</button><button class="ghost sm" id="llmTest">测试连接</button><button class="ghost sm" id="llmClear">清除</button></div>
+        <div class="muted xs" id="llmInfo">Key 只存在这台设备的浏览器里（localStorage），请求从浏览器直接发到你填的地址，不经过本项目的任何服务器。请用有额度上限的 Key。</div>
+      </div>
       <div id="presetCards"></div>
       <div class="card">
         <div class="ct"><b>参数微调</b><span class="muted s">　改完点「分析」或「回测」生效</span></div>

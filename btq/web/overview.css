@@ -45,3 +45,4 @@ h2{font-size:17px;margin:18px 4px 10px;color:#d8d2c8;font-weight:700}
 .why{font-size:11px;color:#bdb5a9;margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:30px}
 @media(max-width:899px){.why{display:none}}
 a.tile{display:block;text-decoration:none;color:inherit}
+.st-gear{border:1px solid rgba(255,255,255,.12);background:#1a1713;color:#ece7df;border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer}

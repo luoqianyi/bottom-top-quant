@@ -460,7 +460,9 @@ $('#chatForm').onsubmit = e => { e.preventDefault(); const q = $('#chatInput').v
 $$('#quick button').forEach(b => b.onclick = () => ask(b.textContent));
 $('#btnScan').onclick = scan;
 $('#btnSaveWatch').onclick = async () => { const syms = $('#watch').value.split(/\n|,/).map(s => s.trim()).filter(Boolean); try { await api('/api/watchlist', {symbols: syms}); toast('自选已保存'); } catch (e) { toast(e.message); } };
+window.btqReloadLLM = () => { Object.assign(LLM, JSON.parse(localStorage.btqLLM || '{}')); llmForm(); };
 $('#btnAlert').onclick = async () => {
+  if (S.demo) { window.btqSettings(); return; }
   const syms = $('#watch').value.split(/\n|,/).map(s => s.trim()).filter(Boolean);
   $('#alertInfo').textContent = '扫描中…';
   try { const r = await api('/api/alert', {symbols: syms, preset: S.preset, webhook: $('#webhook').value.trim(), min_score: +$('#minScore').value});

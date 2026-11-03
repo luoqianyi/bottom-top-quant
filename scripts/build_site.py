@@ -24,6 +24,8 @@ def main():
     ap.add_argument("--preset", default="relaxed")
     ap.add_argument("--webhook", default="")
     ap.add_argument("--workers", type=int, default=1)
+    ap.add_argument("--levels", default="入场,离场,减仓", help="推送哪些结论，逗号分隔")
+    ap.add_argument("--test-push", action="store_true", help="无论有没有信号，都发一条测试消息")
     a = ap.parse_args()
     out = Path(a.out)
     shutil.rmtree(out, ignore_errors=True)
@@ -70,9 +72,14 @@ def main():
     dump(demo / "index.json", dict(symbols=ok, names={it["symbol"]: it["name"] for it in items}))
     print("details:", len(ok), "site ->", out)
 
-    hits = [it for it in items if it["verdict"] in ("入场", "离场", "减仓")]
+    levels = [x.strip() for x in a.levels.replace("，", ",").split(",") if x.strip()]
+    hits = [it for it in items if it["verdict"] in levels]
+    if not a.webhook:
+        print("no webhook configured, skip push")
+    elif a.test_push and not hits:
+        hits = [dict(verdict="测试", name="推送通道", close="", chg_pct=0.0, reason="配置成功，收盘有信号时会推送到这里")]
     if a.webhook and hits:
-        text = "四证收盘结论 " + ov["generated"] + "\n" + "\n".join(f"[{it['verdict']}] {it['name']} {it['close']} ({it['chg_pct']:+.2f}%) {it['reason']}" for it in hits)
+        text = ("【测试】" if a.test_push else "") + "四证收盘结论 " + ov["generated"] + "\n" + "\n".join(f"[{it['verdict']}] {it['name']} {it['close']} ({it['chg_pct']:+.2f}%) {it['reason']}" for it in hits) + "\n仅供研究学习，不构成投资建议"
         from btq.notify import post
         try:
             post(a.webhook, text)

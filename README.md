@@ -5,6 +5,10 @@
 
 > 仅供研究和学习，不构成投资建议。历史回测不代表未来收益。
 
+![btq 网页终端](docs/img/web_analysis.png)
+
+**网页终端**：K 线 + MACD + 成交量三窗联动，右侧是「AI 量化」面板，一键分析会依次识别图表结构、计算四证信号，并在图上逐条画出速度扇、斐波那契、成本线、支撑压力、ABCDE 波段、趋势线、建仓区、止损和目标，最后给出综合评分和规则模型结论。另外还有逐 K 线回放、回测、对话、自选扫描和推送。
+
 ---
 
 ## 一、核心逻辑
@@ -44,7 +48,43 @@
 
 ---
 
-## 二、安装
+## 二、网页终端（btq serve）
+
+```bash
+pip install -r requirements.txt
+python -m btq serve            # 浏览器打开 http://127.0.0.1:8000
+```
+
+| 功能 | 说明 |
+|------|------|
+| 图表 | TradingView Lightweight Charts，日K / 周K，MA5/10/20/60，MACD(12,26,9)，VOL(5,10)，三个窗口的十字光标和缩放同步 |
+| AI 分析 | 四个步骤：识别图表结构 → 计算规则信号 → 在图上划线 → AI 深度解读。可以选模型（严格版、宽松版、加密多空）、周期（短线 20 日、中线 60 日、长线 120 日）、持仓状态、做多或做空 |
+| 自动划线 | 速度阻力扇 0.382 / 0.5 / 0.618、斐波那契回撤、锚定 VWAP 成本线、地量/天量锚点、底背离/顶背离（价格和 DIF 同步连线）、ABCDE 波段、上升/下降压力线和支撑线、支撑和压力（附触碰次数）、建仓区、止损、第一和第二目标。用「图层」开关显示 |
+| 综合评分 | -100 到 +100 的仪表盘，由趋势、动量、量能、波动、结构五项加权，给出偏多 / 中性 / 偏空 |
+| 规则模型信号 | 可以入场 / 接近条件，等第四证 / 四证不齐，一手别动 / 三证已现，先减半仓 / 四证逃顶，清仓离场……附现价、入场区间、止损、第一目标、第二目标、盈亏比，以及抄底和逃顶四证的逐条明细 |
+| 回放 | 选一个历史日期，逐根 K 线前进或自动播放，每一步都只用当时之前的数据重新分析（有测试保证没有未来函数） |
+| 回测 | 收益、买入持有、年化、回撤、夏普、胜率、盈亏因子，资金曲线和买入持有对比，每笔交易明细，买卖点标在 K 线上 |
+| 对话 | 基于当前图表回答"能不能抄底、止损在哪、目标多少、仓位怎么做"。默认用规则引擎；设置 `BTQ_LLM_API_KEY`（可选 `BTQ_LLM_BASE_URL`、`BTQ_LLM_MODEL`，兼容任何 OpenAI 格式接口，比如 OpenRouter、Groq、DeepSeek）后由大模型回答，分析卡片里也会多一段 AI 解读 |
+| 模型 | 三套预设，常用参数可以直接在页面上改（地量窗口、放量倍数、扇形比例、波段幅度、止损、仓位、移动止盈、是否做空） |
+| 任务 | 编辑并保存自选，一键扫描（抄底和逃顶证据数、综合评分，点击跳转到对应标的），填 webhook 推送到企业微信、钉钉或飞书 |
+
+| 规则信号 · 四证明细 | 回测 + 自选扫描 |
+|---|---|
+| ![signal](docs/img/web_signal.png) | ![backtest](docs/img/web_backtest_scan.png) |
+| **逃顶：BTC-USD 今天 4/4** | **对话** |
+| ![btc](docs/img/web_btc_top.png) | ![chat](docs/img/web_chat.png) |
+
+手机上也能用，页面会自动改成上下布局：
+
+<img src="docs/img/web_mobile.png" width="320" />
+
+### 在线演示（GitHub Pages）
+
+仓库自带 `.github/workflows/pages.yml`。在 Settings → Pages → Source 选 **GitHub Actions**，每次推送和每个交易日 17:45（北京时间）会自动生成一份带演示数据的静态站点。没有后端时，页面自动进入演示模式：可以分析、回测、看扫描结果；回放、改参数和推送需要本地运行 `btq serve`。
+
+本地生成静态站点：`python scripts/build_site.py --out site --symbols 300750.SZ BTC-USD NVDA`
+
+## 三、安装
 
 ```bash
 git clone git@github.com:<你的用户名>/bottom-top-quant.git
@@ -54,7 +94,7 @@ pip install -r requirements.txt
 # 可选：A股数据更准 pip install akshare；交易所加密货币 pip install ccxt
 ```
 
-## 三、使用
+## 四、命令行
 
 ### 1）扫描：现在离抄底 / 逃顶还差几条证据
 
@@ -103,7 +143,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 仓库里自带 `.github/workflows/daily-scan.yml`。工作日北京时间 16:30（A股/港股收盘后）和 05:30（美股收盘后）各跑一次。
 在仓库的 Settings → Secrets → Actions 里加上 `ALERT_WEBHOOK`，再改 `watchlist.txt`，就能每天收到推送。
 
-## 四、标的写法（不限市场）
+## 五、标的写法（不限市场）
 
 | 市场 | Yahoo 代码 | 其他数据源 |
 |------|-----------|-----------|
@@ -115,7 +155,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 | 期货 / 外汇 | `GC=F` `CL=F` `USDCNY=X` | |
 | 自有数据 | | `csv:path/to/file.csv`（列：date,open,high,low,close,volume） |
 
-## 五、参数预设
+## 六、参数预设
 
 - `configs/default.yaml`：**严格版**，完全按视频参数（地量 60 日、放量 2.5 倍、扇形 0.5 线、止损 3%）。信号很少，但质量最高。
 - `configs/relaxed.yaml`：宽松版，放量倍数 1.8，波段幅度 15%。适合指数、大盘股、黄金这类成交量比较平滑的标的。
@@ -123,7 +163,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 
 所有参数见 `btq/config.py`，在 YAML 里写哪个就覆盖哪个。
 
-## 六、实测截图
+## 七、命令行实测截图
 
 ### 抄底案例 1：宁德时代 300750.SZ，2019-11-19（宽松版）
 
@@ -147,7 +187,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 
 ![300750 回测](docs/img/backtest_300750.png)
 
-## 七、回测参考（2015-01-01 至 2026-11-03，日线，佣金和滑点各 0.05%）
+## 八、回测参考（2015-01-01 至 2026-11-03，日线，佣金和滑点各 0.05%）
 
 | 标的 | 严格版 收益 / 笔数 | 宽松版 收益 / 笔数 / 胜率 | 同期买入持有 |
 |------|-----------------|--------------------------|------------|
@@ -163,7 +203,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 2. 单笔胜率不错，最大回撤很小，但大部分时间空仓，所以总收益远远跑不赢长牛标的的买入持有。
 3. 更合理的用法：把它当成**进场过滤器 / 提醒器**，用来盯一篮子标的；或者和你自己的长期仓位配合使用（底部加仓、顶部减仓）。
 
-## 八、项目结构
+## 九、项目结构
 
 ```
 btq/
@@ -173,10 +213,16 @@ btq/
   report.py       图表和 CSV / JSON 报告
   data.py         Yahoo / akshare / ccxt / CSV 数据接口
   notify.py       Webhook 推送
-  cli.py          scan / backtest / case / alert / watch 命令
+  analysis.py     网页终端用的分析：结构、评分、划线、交易计划、解读（支持回放）
+  server.py       FastAPI 后端：/api/bars /analyze /backtest /scan /chat /alert /watchlist
+  web/            前端（index.html、app.js、app.css，自带 Lightweight Charts）
+  cli.py          serve / scan / backtest / case / alert / watch 命令
+scripts/build_site.py  生成 GitHub Pages 静态演示站
 docs/img/         README 里的实测截图
 configs/          参数预设
 tests/            单元测试（pytest）
 ```
+
+图表库：[TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)（Apache 2.0）。
 
 运行测试：`pip install pytest && pytest -q`

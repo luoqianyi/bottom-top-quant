@@ -73,6 +73,9 @@ def main(argv=None):
         if name == "watch":
             s.add_argument("--every", type=int, default=3600, help="seconds between checks")
             s.add_argument("--webhook", default=None, help="POST alerts as JSON to this URL (企业微信/飞书/钉钉/Discord)")
+    s = sub.add_parser("serve", help="web terminal (FastAPI + TradingView Lightweight Charts)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
     s = sub.add_parser("case", help="zoomed chart of one signal date")
     s.add_argument("symbol")
     s.add_argument("--date", required=True)
@@ -86,7 +89,7 @@ def main(argv=None):
     s.add_argument("--webhook", default=None)
     s.add_argument("--min-score", type=int, default=3)
     a = ap.parse_args(argv)
-    cfg = Config.load(a.config)
+    cfg = Config.load(getattr(a, "config", None))
 
     if a.cmd == "scan":
         for sym in a.symbols:
@@ -103,6 +106,10 @@ def main(argv=None):
             ep = bt.episodes()
             if not ep.empty:
                 print(ep.to_string(index=False))
+    elif a.cmd == "serve":
+        from .server import serve
+        print(f"btq 终端: http://{a.host}:{a.port}")
+        serve(a.host, a.port)
     elif a.cmd == "case":
         import pandas as pd
         from .report import plot_case

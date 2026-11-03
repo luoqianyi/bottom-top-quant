@@ -6,3 +6,4 @@ reports/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+site/

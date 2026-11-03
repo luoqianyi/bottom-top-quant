@@ -30,7 +30,7 @@ jobs:
           WEBHOOK: ${{ secrets.ALERT_WEBHOOK || vars.ALERT_WEBHOOK }}
           LEVELS: ${{ vars.ALERT_LEVELS || '入场,离场,减仓' }}
           TEST_PUSH: ${{ inputs.test_push && '--test-push' || '' }}
-        run: python scripts/build_site.py --out site --webhook "$WEBHOOK" --levels "$LEVELS" $TEST_PUSH
+        run: python scripts/build_site.py --out site --webhook "$WEBHOOK" --levels "$LEVELS" --site-url "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/" $TEST_PUSH
       - name: publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:

@@ -23,6 +23,7 @@ function guessRepo() {
 
 const css = `
 .st-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;justify-content:flex-end}
+.st-mask[hidden]{display:none!important}
 .st-sheet{width:min(460px,100%);height:100%;overflow:auto;background:#14110e;border-left:1px solid rgba(255,255,255,.08);padding:16px 16px calc(24px + env(safe-area-inset-bottom));color:#ece7df;font:14px/1.45 -apple-system,"PingFang SC","Noto Sans SC",sans-serif}
 .st-sheet h3{margin:0;font-size:18px}.st-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .st-sec{border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;margin:12px 0;background:#1a1612}
@@ -138,6 +139,7 @@ function msg(sel, t, cls) { const el = $(sel); el.textContent = t; el.className 
 function open() { mount(); $('#stMask').hidden = false; $('#stMask')._status(); }
 function close() { $('#stMask').hidden = true; if (window.btqReloadLLM) window.btqReloadLLM(); }
 window.btqSettings = open;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#stMask') && !$('#stMask').hidden) close(); });
 document.addEventListener('click', e => { if (e.target.closest('[data-settings]')) { e.preventDefault(); open(); } });
 if (location.hash === '#settings') addEventListener('load', open);
 })();

@@ -50,7 +50,7 @@ def read_watchlist(path):
             if not line:
                 continue
             src = "yahoo"
-            for prefix in ("yahoo", "akshare", "ccxt", "csv"):
+            for prefix in ("yahoo", "akshare", "ccxt", "csv", "sina", "csindex", "hksina", "sge", "sinafut"):
                 if line.startswith(prefix + ":"):
                     src, line = prefix, line[len(prefix) + 1:]
                     break

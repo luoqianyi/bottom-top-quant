@@ -1,0 +1,38 @@
+name: market-close
+# 每个市场收盘后：拉行情 → 四证判定 → 生成首屏结论和详情 → 发布到 gh-pages 分支（GitHub Pages）
+# 可选：仓库 Settings → Secrets → Actions 里加 ALERT_WEBHOOK（企业微信/钉钉/飞书机器人），会推送 入场/离场/减仓
+on:
+  schedule:
+    - cron: "40 7 * * 1-5"    # 15:40 北京时间，A股收盘后
+    - cron: "40 8 * * 1-5"    # 16:40 北京时间，港股收盘后
+    - cron: "40 21 * * 1-5"   # 05:40 北京时间，美股收盘后（夏令时同样覆盖）
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["btq/**", "scripts/**", "markets.yaml", "configs/**", ".github/workflows/market-close.yml"]
+permissions:
+  contents: write
+concurrency: { group: market-close, cancel-in-progress: false }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env: { TZ: Asia/Shanghai }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt httpx akshare
+      - name: build site
+        env:
+          WEBHOOK: ${{ secrets.ALERT_WEBHOOK }}
+        run: python scripts/build_site.py --out site --webhook "$WEBHOOK"
+      - name: publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "收盘结论"

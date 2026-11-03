@@ -1,0 +1,53 @@
+# 首屏总览：分组 → 标的。symbol 写法同 watchlist（支持 sina: / csindex: / hksina: / sge: / sinafut: / yahoo）
+# market 决定"哪个收盘"会刷新它：cn = A股 15:00，hk = 港股 16:10，us = 美股 16:00 ET，global = 期货/外汇/加密（每次都刷新）
+ticker: ["^NDX", "^GSPC", "hksina:HSI", "sina:sh000001", "GC=F", "BTC-USD"]
+groups:
+  - name: 中国指数
+    items:
+      - {name: 上证指数, symbol: "sina:sh000001", market: cn}
+      - {name: 深证成指, symbol: "sina:sz399001", market: cn}
+      - {name: 创业板指, symbol: "sina:sz399006", market: cn}
+      - {name: 中证全指, symbol: "csindex:000985", market: cn}
+      - {name: 中证A500, symbol: "sina:sh000510", market: cn}
+  - name: 海外指数
+    items:
+      - {name: 纳斯达克100, symbol: "^NDX", market: us}
+      - {name: 标普500, symbol: "^GSPC", market: us}
+      - {name: 道琼斯, symbol: "^DJI", market: us}
+      - {name: 日经225, symbol: "^N225", market: global}
+      - {name: 韩国KOSPI, symbol: "^KS11", market: global}
+      - {name: 印度SENSEX, symbol: "^BSESN", market: global}
+      - {name: 台湾加权, symbol: "^TWII", market: global}
+      - {name: 德国DAX, symbol: "^GDAXI", market: global}
+      - {name: 英国富时100, symbol: "^FTSE", market: global}
+  - name: 大盘指数
+    items:
+      - {name: 沪深300, symbol: "sina:sh000300", market: cn}
+      - {name: 中证500, symbol: "sina:sh000905", market: cn}
+      - {name: 中证1000, symbol: "sina:sh000852", market: cn}
+      - {name: 中证2000, symbol: "csindex:932000", market: cn}
+      - {name: 科创100, symbol: "sina:sh000698", market: cn}
+      - {name: 国证2000, symbol: "sina:sz399303", market: cn}
+  - name: 50指数
+    items:
+      - {name: 上证50, symbol: "sina:sh000016", market: cn}
+      - {name: 科创50, symbol: "sina:sh000688", market: cn}
+      - {name: 创业板50, symbol: "sina:sz399673", market: cn}
+      - {name: 深证50, symbol: "sina:sz399850", market: cn}
+      - {name: 北证50, symbol: "sina:bj899050", market: cn}
+      - {name: A50期指, symbol: "sinafut:CHA50CFD", market: global}
+  - name: 港股指数
+    items:
+      - {name: 恒生指数, symbol: "hksina:HSI", market: hk}
+      - {name: 恒生科技, symbol: "hksina:HSTECH", market: hk}
+      - {name: 恒生国企, symbol: "hksina:HSCEI", market: hk}
+      - {name: 恒生医疗保健, symbol: "hksina:HSHCI", market: hk}
+  - name: 汇率 / 期货 / 商品
+    items:
+      - {name: 黄金9999, symbol: "sge:Au99.99", market: cn}
+      - {name: COMEX黄金, symbol: "GC=F", market: global}
+      - {name: 小型纳指, symbol: "NQ=F", market: global}
+      - {name: WTI原油, symbol: "CL=F", market: global}
+      - {name: 美元指数, symbol: "DX-Y.NYB", market: global}
+      - {name: 美元兑人民币, symbol: "CNY=X", market: global}
+      - {name: 比特币, symbol: "BTC-USD", market: global}

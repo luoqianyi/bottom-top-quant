@@ -4,7 +4,7 @@ matplotlib>=3.7
 yfinance>=0.2.40
 pyyaml>=6.0
 # optional data sources
-# akshare>=1.12     # A股/指数更准的成交量
+akshare>=1.15      # A股/港股指数（新浪、中证官网）、金交所
 # ccxt>=4.0         # 交易所加密货币
 fastapi>=0.110
 uvicorn>=0.29

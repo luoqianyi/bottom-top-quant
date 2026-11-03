@@ -1,13 +1,17 @@
-"""Build a static copy of the web terminal (for GitHub Pages): front-end + pre-computed demo data.
+"""Build the static site (GitHub Pages): 首屏收盘结论 + 每个标的的详情数据。
 
-    python scripts/build_site.py --out site --symbols BTC-USD 300750.SZ AAPL
+    python scripts/build_site.py --out site                 # markets.yaml 里的全部标的
+    python scripts/build_site.py --out site --webhook URL   # 顺便把 入场/离场/减仓 推送出去
 """
-import argparse, json, re, shutil, sys
+import argparse, json, re, shutil, sys, urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient  # noqa: E402
 from btq.server import app, WEB  # noqa: E402
+
+BARS_KEEP = 1500   # detail chart history kept in the static copy (analysis still uses the full history)
 
 
 def key(s):
@@ -17,13 +21,16 @@ def key(s):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="site")
-    ap.add_argument("--preset", default="strict")
-    ap.add_argument("--symbols", nargs="+", default=["300750.SZ", "BTC-USD", "NVDA", "AAPL", "600519.SS", "0700.HK"])
+    ap.add_argument("--preset", default="relaxed")
+    ap.add_argument("--webhook", default="")
+    ap.add_argument("--workers", type=int, default=1)
     a = ap.parse_args()
     out = Path(a.out)
     shutil.rmtree(out, ignore_errors=True)
     shutil.copytree(WEB, out / "static")
-    shutil.move(str(out / "static" / "index.html"), out / "index.html")
+    for page in ("overview.html", "chart.html"):
+        shutil.move(str(out / "static" / page), out / ("index.html" if page == "overview.html" else page))
+    (out / ".nojekyll").write_text("")
     demo = out / "static" / "demo"
     demo.mkdir(parents=True, exist_ok=True)
     c = TestClient(app)
@@ -32,22 +39,46 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
-    ok = []
-    for s in a.symbols:
+    ov = c.get("/api/overview", params=dict(preset=a.preset)).raise_for_status().json()
+    dump(demo / "overview.json", ov)
+    print(f"overview: {ov['total']} 个标的，{ov['errors']} 个失败，{ov['seconds']} 秒", ov["counts"])
+    items = [it for g in ov["groups"] for it in g["items"] if not it.get("error")]
+
+    def detail(it):
+        s = it["symbol"]
         try:
             body = dict(symbol=s, preset=a.preset)
-            dump(demo / key(s) / "bars.json", c.get("/api/bars", params=dict(symbol=s)).raise_for_status().json())
+            b = c.get("/api/bars", params=dict(symbol=s)).raise_for_status().json()
+            for k in ("candles", "volume", "dif", "dea", "hist", "vma5", "vma10"):
+                b[k] = b[k][-BARS_KEEP:]
+            b["ma"] = {n: v[-BARS_KEEP:] for n, v in b["ma"].items()}
+            dump(demo / key(s) / "bars.json", b)
             for d in ("long", "short"):
                 dump(demo / key(s) / f"analyze_{d}.json", c.post("/api/analyze", json=dict(body, direction=d)).raise_for_status().json())
             dump(demo / key(s) / "backtest.json", c.post("/api/backtest", json=body).raise_for_status().json())
-            ok.append(s)
-            print("ok", s)
+            return s
         except Exception as ex:
-            print("skip", s, ex)
+            print("skip detail", s, ex)
+
+    with ThreadPoolExecutor(a.workers) as ex:
+        ok = [s for s in ex.map(detail, items) if s]
     dump(demo / "presets.json", c.get("/api/presets").json())
-    dump(demo / "scan.json", c.post("/api/scan", json=dict(symbols=ok, preset="relaxed")).json())
-    dump(demo / "index.json", dict(symbols=ok))
-    print("site ->", out)
+    scan = [dict(symbol=it["symbol"], date=it["date"], price=it["close"], change_pct=it["chg_pct"], bottom=it["bottom"],
+                 bottom_fired=it["verdict"] == "入场", top=it["top"], top_fired=it["verdict"] == "离场",
+                 composite=it["composite"], bias=it["bias"]) for it in items]
+    dump(demo / "scan.json", scan)
+    dump(demo / "index.json", dict(symbols=ok, names={it["symbol"]: it["name"] for it in items}))
+    print("details:", len(ok), "site ->", out)
+
+    hits = [it for it in items if it["verdict"] in ("入场", "离场", "减仓")]
+    if a.webhook and hits:
+        text = "四证收盘结论 " + ov["generated"] + "\n" + "\n".join(f"[{it['verdict']}] {it['name']} {it['close']} ({it['chg_pct']:+.2f}%) {it['reason']}" for it in hits)
+        body = json.dumps({"msgtype": "text", "text": {"content": text}, "content": text}).encode()
+        try:
+            urllib.request.urlopen(urllib.request.Request(a.webhook, data=body, headers={"Content-Type": "application/json"}), timeout=10).read()
+            print("pushed", len(hits))
+        except Exception as ex:
+            print("push failed:", ex)
 
 
 if __name__ == "__main__":

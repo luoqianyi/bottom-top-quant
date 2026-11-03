@@ -151,3 +151,4 @@ th{color:var(--mut);font-weight:500}
   .drawer{right:0;height:70%}
   .db{grid-template-columns:1fr;overflow:auto}
 }
+.back{color:var(--acc);text-decoration:none;font-weight:700;margin-right:6px;font-size:14px}

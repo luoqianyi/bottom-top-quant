@@ -80,7 +80,15 @@ python -m btq serve            # 浏览器打开 http://127.0.0.1:8000
 
 ### 在线演示（GitHub Pages）
 
-仓库自带 `.github/workflows/pages.yml`。在 Settings → Pages → Source 选 **GitHub Actions**，每次推送和每个交易日 17:45（北京时间）会自动生成一份带演示数据的静态站点。没有后端时，页面自动进入演示模式：可以分析、回测、看扫描结果；回放、改参数和推送需要本地运行 `btq serve`。
+仓库自带 `.github/workflows/market-close.yml`：工作日北京时间 15:40（A股收盘后）、16:40（港股收盘后）、05:40（美股收盘后）各跑一次，拉 `markets.yaml` 里约 37 个指数/期货/汇率的当天行情，跑四证，生成**首屏收盘结论**和每个标的的详情页，发布到 `gh-pages` 分支。
+
+- 首屏（`index.html`）：按 中国指数 / 海外指数 / 大盘指数 / 50指数 / 港股指数 / 汇率期货商品 分组的色块墙，红涨绿跌；每块带 60 日走势线、抄底/逃顶几证、结论徽章（入场 / 离场 / 减仓 / 关注 / 观望）和一句原因；顶部可按结论筛选。
+![首屏收盘结论](docs/img/web_overview_mobile.png)
+
+- 点任意色块进入详情（`chart.html?symbol=...`）：K 线、自动划线、综合评分、交易计划、回测。
+- 第一次使用：Settings → Pages → Source 选 **Deploy from a branch**，分支选 `gh-pages` / `(root)`。
+- 想加减标的，改 `markets.yaml`。结论规则见 `btq/overview.py` 的 `verdict()`。
+- 没有后端时页面读静态数据；回放、改参数需要本地运行 `btq serve`（本地首页 `http://127.0.0.1:8000` 就是同一个总览）。
 
 本地生成静态站点：`python scripts/build_site.py --out site --symbols 300750.SZ BTC-USD NVDA`
 
@@ -140,8 +148,7 @@ webhook 发送的 JSON 同时带 `msgtype/text`（企业微信、钉钉格式）
 
 ### 5）用 GitHub Actions 每天自动扫描
 
-仓库里自带 `.github/workflows/daily-scan.yml`。工作日北京时间 16:30（A股/港股收盘后）和 05:30（美股收盘后）各跑一次。
-在仓库的 Settings → Secrets → Actions 里加上 `ALERT_WEBHOOK`，再改 `watchlist.txt`，就能每天收到推送。
+`market-close.yml` 每次收盘生成首屏时，如果仓库 Settings → Secrets → Actions 里配了 `ALERT_WEBHOOK`，会把当天结论为 入场 / 离场 / 减仓 的标的推送出去；没配就只更新网页，不会报错。
 
 ## 五、标的写法（不限市场）
 
@@ -214,10 +221,12 @@ btq/
   data.py         Yahoo / akshare / ccxt / CSV 数据接口
   notify.py       Webhook 推送
   analysis.py     网页终端用的分析：结构、评分、划线、交易计划、解读（支持回放）
-  server.py       FastAPI 后端：/api/bars /analyze /backtest /scan /chat /alert /watchlist
+  server.py       FastAPI 后端：/api/overview /bars /analyze /backtest /scan /chat /alert /watchlist
+  overview.py     首屏收盘结论：逐个标的跑四证，给出 入场/离场/减仓/关注/观望
   web/            前端（index.html、app.js、app.css，自带 Lightweight Charts）
   cli.py          serve / scan / backtest / case / alert / watch 命令
-scripts/build_site.py  生成 GitHub Pages 静态演示站
+scripts/build_site.py  生成 GitHub Pages 静态站（首屏 + 详情），可选推送
+markets.yaml           首屏分组和标的
 docs/img/         README 里的实测截图
 configs/          参数预设
 tests/            单元测试（pytest）

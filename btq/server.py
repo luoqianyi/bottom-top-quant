@@ -54,7 +54,7 @@ def J(obj):
 
 def parse_symbol(sym: str):
     sym = sym.strip()
-    for p in ("yahoo", "akshare", "ccxt", "csv"):
+    for p in ("yahoo", "akshare", "ccxt", "csv", "sina", "csindex", "hksina", "sge", "sinafut"):
         if sym.startswith(p + ":"):
             return sym[len(p) + 1:], p
     return sym, "yahoo"
@@ -137,7 +137,29 @@ app.mount("/static", StaticFiles(directory=str(WEB)), name="static")
 
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html")
+    return FileResponse(WEB / "overview.html")
+
+
+@app.get("/chart")
+def chart_page():
+    return FileResponse(WEB / "chart.html")
+
+
+_overview = {}
+
+
+@app.get("/api/overview")
+def overview(preset: str = "relaxed", refresh: bool = False):
+    from .overview import load_markets, build
+    hit = _overview.get(preset)
+    if hit and not refresh and time.time() - hit[0] < 1200:
+        return J(hit[1])
+    cfg = make_cfg(preset)
+    res = build(load_markets(REPO / "markets.yaml"), lambda s: get_df(s), cfg)
+    res["model"] = PRESETS.get(preset, PRESETS["relaxed"])["name"]
+    res["preset"] = preset
+    _overview[preset] = (time.time(), res)
+    return J(res)
 
 
 @app.get("/api/presets")

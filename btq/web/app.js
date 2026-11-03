@@ -8,8 +8,9 @@ const fmt = (x, d) => x == null || isNaN(x) ? '-' : Number(x).toLocaleString('en
 const pct = x => x == null ? '-' : (x > 0 ? '+' : '') + Number(x).toFixed(2) + '%';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const QS = new URLSearchParams(location.search);
 const S = {
-  symbol: localStorage.btqSymbol || '300750.SZ', tf: '1d', preset: 'strict', period: 'short', holding: 'flat', direction: 'long',
+  symbol: QS.get('symbol') || localStorage.btqSymbol || '300750.SZ', name: QS.get('name') || '', tf: '1d', preset: QS.get('preset') || 'strict', period: 'short', holding: 'flat', direction: 'long',
   overrides: {}, presets: [], bars: null, analysis: null, bt: null, replay: null, demo: false, demoIndex: null,
   layers: {ma: true, fan: true, fib: true, avwap: true, structure: true, plan: true, trades: true},
   drawn: {lines: [], macdLines: [], priceLines: []}, history: [],
@@ -87,7 +88,7 @@ function legend(t) {
   const k = b.candles[i], prev = b.candles[i - 1] || k, ch = (k.close / prev.close - 1) * 100;
   const cls = ch >= 0 ? 'pos' : 'neg';
   const ma = n => { const arr = b.ma[n]; const off = b.candles.length - arr.length; const v = arr[i - off]; return v ? fmt(v.value) : '-'; };
-  $('#lgMain').innerHTML = `<b>${S.symbol}</b><span>开 <b>${fmt(k.open)}</b></span><span>高 <b>${fmt(k.high)}</b></span><span>低 <b>${fmt(k.low)}</b></span><span>收 <b class="${cls}">${fmt(k.close)}</b></span><span class="${cls}">${pct(ch)}</span>` +
+  $('#lgMain').innerHTML = `<b>${S.name || S.symbol}</b><span>开 <b>${fmt(k.open)}</b></span><span>高 <b>${fmt(k.high)}</b></span><span>低 <b>${fmt(k.low)}</b></span><span>收 <b class="${cls}">${fmt(k.close)}</b></span><span class="${cls}">${pct(ch)}</span>` +
     (S.layers.ma ? Object.keys(maColors).map(n => `<span style="color:${maColors[n]}">MA${n} ${ma(n)}</span>`).join('') : '');
   const g = (arr, off = 0) => arr[i - off]?.value;
   $('#lgMacd').innerHTML = `<span>MACD(12,26,9)</span><span style="color:#e5e7eb">DIF: ${fmt(g(b.dif), 3)}</span><span style="color:#38bdf8">DEA: ${fmt(g(b.dea), 3)}</span><span class="${g(b.hist) >= 0 ? 'pos' : 'neg'}">MACD: ${fmt(g(b.hist), 3)}</span>`;
@@ -137,7 +138,8 @@ async function loadBars(keepRange) {
     legend();
     const last = b.candles.at(-1), prev = b.candles.at(-2);
     const ch = (last.close / prev.close - 1) * 100;
-    $('#quote').innerHTML = `${S.symbol} <span class="${ch >= 0 ? 'up' : 'dn'}">${fmt(last.close)} ${pct(ch)}</span>`;
+    $('#symName').textContent = S.name || 'btq';
+    $('#quote').innerHTML = `${S.name || S.symbol} <span class="${ch >= 0 ? 'up' : 'dn'}">${fmt(last.close)} ${pct(ch)}</span>`;
     $('#phMeta').textContent = `${S.tf === '1w' ? '周K' : '日K'} · ${b.last || ''}`;
     if (!S.replay) $('#rpDate').max = b.last;
     clearDrawings(); S.analysis = null;
@@ -339,7 +341,9 @@ async function scan() {
 
 // ------------------------------------------------------------------ wiring
 async function setSymbol(s) {
-  S.symbol = s.trim().toUpperCase().replace(/^(AKSHARE|CCXT|CSV|YAHOO):/, m => m.toLowerCase()); localStorage.btqSymbol = S.symbol;
+  s = s.trim(); S.name = '';
+  S.symbol = /^[a-z]+:/i.test(s) ? s.replace(/^[a-z]+:/i, m => m.toLowerCase()) : s.toUpperCase();
+  history.replaceState(null, '', '?symbol=' + encodeURIComponent(S.symbol) + '&preset=' + S.preset); localStorage.btqSymbol = S.symbol;
   $('#symbol').value = S.symbol; S.bt = null; S.replay = null; $('#replaybar').classList.add('hidden'); $('#drawer').classList.add('hidden');
   ['#scoreCard', '#signalCard', '#stepsCard'].forEach(x => $(x).classList.add('hidden'));
   await loadBars(); analyze();
@@ -348,7 +352,7 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.remove
 const seg = (sel, cb) => $$(sel + ' button').forEach(b => b.onclick = () => { $$(sel + ' button').forEach(x => x.classList.remove('on')); b.classList.add('on'); cb(b.dataset.v); });
 
 $('#symbol').addEventListener('keydown', e => e.key === 'Enter' && setSymbol(e.target.value));
-$('#symbol').addEventListener('change', e => e.target.value.toUpperCase() !== S.symbol && setSymbol(e.target.value));
+$('#symbol').addEventListener('change', e => e.target.value.trim() !== S.symbol && setSymbol(e.target.value));
 seg('#tf', v => { S.tf = v; loadBars().then(() => analyze(true)); });
 seg('#direction', v => { S.direction = v; analyze(); });
 $('#preset').onchange = e => { S.preset = e.target.value; S.overrides = {}; renderPresets(); analyze(); };

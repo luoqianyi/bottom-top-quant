@@ -24,7 +24,7 @@ function tile(it) {
   if (it.error) return `<div class="tile f err" data-v="err" title="${it.error}"><div class="nm">${it.name}</div><div class="px">--</div><div class="ch">数据暂缺</div></div>`;
   const cls = it.chg_pct > 0 ? 'u' : it.chg_pct < 0 ? 'd' : 'f', col = it.chg_pct > 0 ? 'up' : it.chg_pct < 0 ? 'dn' : '';
   return `<a class="tile ${cls} ${it.tone}" data-v="${it.verdict}" href="${href}">
-    ${it.live ? (it.est ? '<span class="lv est" title="用跟踪ETF的涨跌幅估算，结论仍按最近收盘">估算</span>' : '<span class="lv" title="盘中实时价，结论仍按最近收盘">实时</span>') : ''}
+    ${it.live ? `<span class="lv${it.est ? ' est' : ''}" title="${it.est ? '用跟踪ETF的涨跌幅估算；' : ''}获取时间（北京时间），结论仍按最近收盘">${it.est ? '估 ' : ''}${it.ts}</span>` : ''}
     ${it.no_volume ? '<span class="nv" title="没有成交量，地量/天量一证无法判断">无量</span>' : ''}
     <div class="nm">${it.name}</div>
     <div class="px ${col}">${fmt(it.close)}</div>
@@ -44,7 +44,7 @@ function render() {
   $('#groups').innerHTML = d.groups.map(g => {
     const items = g.items.filter(it => FILTER === 'all' || it.verdict === FILTER);
     if (!items.length) return '';
-    return `<h2>${g.name}</h2><div class="grid">${items.map(tile).join('')}</div>`;
+    return `<section class="grp" style="--n:${Math.min(items.length, 13)}"><h2>${g.name}</h2><div class="grid">${items.map(tile).join('')}</div></section>`;
   }).join('') || '<div class="loading">今天没有符合条件的标的。</div>';
 }
 document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {
@@ -109,6 +109,7 @@ async function emLoad(secids) {
   const o = {}; ((got && got.data && got.data.diff) || []).forEach(x => { if (typeof x.f2 === 'number') o[x.f13 + '.' + x.f12] = [x.f2, x.f4, x.f3]; });
   return o;
 }
+const stamp = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(5, 16).replace('T', ' ');  // 北京时间 MM-DD HH:mm
 const today = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);  // 北京时间日期
 async function liveQuotes() {
   const items = DATA.groups.flatMap(g => g.items).filter(it => !it.error);
@@ -126,7 +127,7 @@ async function liveQuotes() {
     if (!v && EST[it.symbol] && q[EST[it.symbol]] && it.date < today() && !it.live) {  // 只在还没有今天收盘数据时估算
       const pct = q[EST[it.symbol]][2], px = it.close * (1 + pct / 100); v = [px, px - it.close, pct]; est = true;
     }
-    if (v && v[0] > 0 && isFinite(v[1]) && isFinite(v[2])) { Object.assign(it, {close: v[0], chg: v[1], chg_pct: v[2], live: true, est}); n++; }
+    if (v && v[0] > 0 && isFinite(v[1]) && isFinite(v[2])) { Object.assign(it, {close: v[0], chg: v[1], chg_pct: v[2], live: true, est, ts: stamp()}); n++; }
   }
   return [n, items.length];
 }

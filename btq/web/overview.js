@@ -24,6 +24,7 @@ function tile(it) {
   if (it.error) return `<div class="tile f err" data-v="err" title="${it.error}"><div class="nm">${it.name}</div><div class="px">--</div><div class="ch">数据暂缺</div></div>`;
   const cls = it.chg_pct > 0 ? 'u' : it.chg_pct < 0 ? 'd' : 'f', col = it.chg_pct > 0 ? 'up' : it.chg_pct < 0 ? 'dn' : '';
   return `<a class="tile ${cls} ${it.tone}" data-v="${it.verdict}" href="${href}">
+    ${it.live ? '<span class="lv" title="盘中实时价，结论仍按最近收盘">实时</span>' : ''}
     ${it.no_volume ? '<span class="nv" title="没有成交量，地量/天量一证无法判断">无量</span>' : ''}
     <div class="nm">${it.name}</div>
     <div class="px ${col}">${fmt(it.close)}</div>
@@ -57,35 +58,54 @@ async function refresh() {
 setInterval(() => { if (!document.hidden) refresh(); }, 180000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 window.addEventListener('pageshow', e => { if (e.persisted) refresh(); });
-// 手动更新：有 GitHub 令牌（⚙ 设置 → 收盘推送）就触发 Actions 重新拉行情，并等新结果上线；没有令牌只重新读一次已发布的数据
+// 手动更新：浏览器直接拉实时行情（腾讯行情 / Binance 公共接口），只刷新价格和涨跌，不触发 Actions。
+// 四证结论按收盘计算，盘中价格只作参考，仍以最近一次收盘结论为准。
 const rbtn = $('#refreshBtn'), rmsg = $('#refreshMsg');
 const say = (t, c = '') => { rmsg.textContent = t; rmsg.className = 'rf-msg ' + c; };
 const hhmm = () => new Date().toTimeString().slice(0, 5);
+const QQ = {'^NDX': 'usNDX', '^GSPC': 'usINX', '^DJI': 'usDJI', 'CNY=X': 'whUSDCNY'};
+function qqCode(sym) {
+  if (QQ[sym]) return QQ[sym].startsWith('wh') ? QQ[sym] : 's_' + QQ[sym];
+  let m = sym.match(/^sina:((sh|sz|bj)\d{6})$/); if (m) return 's_' + m[1];
+  m = sym.match(/^csindex:(000\d{3})$/); if (m) return 's_sh' + m[1];
+  m = sym.match(/^hksina:(HSI|HSTECH|HSCEI)$/); if (m) return 's_hk' + m[1];
+  return null;
+}
+function qqLoad(codes) {  // 用 <script> 加载，不受跨域限制；返回 {code: 字段数组}
+  return new Promise(res => {
+    const el = document.createElement('script'); el.charset = 'gbk';
+    el.src = 'https://qt.gtimg.cn/q=' + codes.join(',') + '&_=' + Date.now();
+    const done = () => { const o = {}; codes.forEach(c => { const v = window['v_' + c]; if (v) o[c] = v.split('~'); }); el.remove(); res(o); };
+    el.onload = done; el.onerror = done; document.head.appendChild(el);
+  });
+}
+async function liveQuotes() {
+  const items = DATA.groups.flatMap(g => g.items).filter(it => !it.error);
+  const codes = [...new Set(items.map(it => qqCode(it.symbol)).filter(Boolean))];
+  const q = codes.length ? await qqLoad(codes) : {}, n0 = Object.keys(q).length;
+  let n = 0;
+  for (const it of items) {
+    const c = qqCode(it.symbol), f = c && q[c];
+    let px, chg, pct;
+    if (f && c.startsWith('wh')) { px = +f[3]; chg = +f[12]; pct = +f[13]; }
+    else if (f) { px = +f[3]; chg = +f[4]; pct = +f[5]; }
+    if (px > 0) { Object.assign(it, {close: px, chg, chg_pct: pct, live: true}); n++; }
+  }
+  const btc = items.find(it => it.symbol === 'BTC-USD');
+  if (btc) try {
+    const r = await (await fetch('https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT', {cache: 'no-store'})).json();
+    Object.assign(btc, {close: +r.lastPrice, chg: +r.priceChange, chg_pct: +r.priceChangePercent, live: true}); n++;
+  } catch (e) {}
+  return [n, items.length, n0];
+}
 rbtn && (rbtn.onclick = async () => {
-  const G = JSON.parse(localStorage.btqPush || '{}');
-  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
-  const repo = G.repo || (m ? `${m[1]}/${location.pathname.split('/').filter(Boolean)[0]}` : 'luoqianyi/bottom-top-quant');
-  const before = DATA && DATA.generated;
-  rbtn.disabled = true;
+  if (!DATA) return;
+  rbtn.disabled = true; say('正在获取实时行情…');
   try {
-    if (!G.token) {
-      await refresh();
-      if (DATA && DATA.generated !== before) return say('已载入最新数据 ' + hhmm(), 'ok');
-      say('已是最新发布的数据。要立刻从行情源重新拉取，请在 ⚙ 设置 → 收盘推送 里填 GitHub 令牌。');
-      return;
-    }
-    const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/market-close.yml/dispatches`, {method: 'POST',
-      headers: {Authorization: 'Bearer ' + G.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: 'main', inputs: {test_push: 'false'}})});
-    if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? '令牌无效或没有 Actions 写权限' : 'GitHub 返回 ' + r.status);
-    const t0 = Date.now();
-    while (Date.now() - t0 < 10 * 60e3) {
-      say(`正在拉取行情并生成结论… ${Math.round((Date.now() - t0) / 1000)} 秒（通常 3 分钟左右）`);
-      await new Promise(f => setTimeout(f, 15000));
-      const d = await load();
-      if (d.generated !== before) { DATA = d; render(); return say('已更新 ' + hhmm(), 'ok'); }
-    }
-    say('还没出来，可能在排队。稍后会自动刷新。', 'err');
+    await refresh();  // 先看有没有新的收盘结论发布
+    const [n, total] = await liveQuotes();
+    render();
+    say(n ? `已更新 ${n}/${total} 个实时价 ${hhmm()}（结论仍按最近收盘）` : '实时行情暂时取不到，显示的是最近收盘数据', n ? 'ok' : 'err');
   } catch (e) { say('更新失败：' + e.message, 'err'); }
   finally { rbtn.disabled = false; }
 });

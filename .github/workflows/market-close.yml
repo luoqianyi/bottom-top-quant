@@ -3,9 +3,11 @@ name: market-close
 # 推送：网页 ⚙ 设置 → 收盘推送 会写仓库变量 ALERT_WEBHOOK / ALERT_LEVELS；也可手动建 secret ALERT_WEBHOOK（飞书/钉钉/企业微信机器人）
 on:
   schedule:
-    - cron: "40 7 * * 1-5"    # 15:40 北京时间，A股收盘后
-    - cron: "40 8 * * 1-5"    # 16:40 北京时间，港股收盘后
-    - cron: "40 21 * * 1-5"   # 05:40 北京时间，美股收盘后（夏令时同样覆盖）
+    # GitHub 的定时任务是“尽力而为”，高峰期会延迟或直接丢弃，所以每个收盘点后再补两次；同一批信号只推送一次
+    - cron: "37 7,8 * * 1-5"      # 15:37 / 16:37 北京时间，A股、港股收盘后
+    - cron: "13 8,9 * * 1-5"      # 16:13 / 17:13 补跑
+    - cron: "37 21 * * 1-5"       # 05:37 北京时间，美股收盘后（周二到周六早上）
+    - cron: "13 22,23 * * 1-5"    # 06:13 / 07:13 补跑
   workflow_dispatch:
     inputs:
       test_push: { description: "发送一条测试推送", type: boolean, default: false }

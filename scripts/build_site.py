@@ -75,6 +75,17 @@ def main():
 
     levels = [x.strip() for x in a.levels.replace("，", ",").split(",") if x.strip()]
     hits = [it for it in items if it["verdict"] in levels]
+    sig = sorted(f"{it['symbol']}|{it['date']}|{it['verdict']}" for it in hits)
+    dump(demo / "pushed.json", dict(sig=sig))
+    if hits and a.site_url and not a.test_push:  # 备用定时会重复跑，同一批信号只推一次
+        try:
+            import httpx
+            prev = httpx.get(a.site_url.rstrip("/") + "/static/demo/pushed.json", timeout=15).json().get("sig")
+            if prev == sig:
+                print("same signals already pushed, skip")
+                hits = []
+        except Exception as ex:
+            print("dedupe check failed:", ex)
     if not a.webhook:
         print("no webhook configured, skip push")
     if a.webhook and (hits or a.test_push):

@@ -30,7 +30,7 @@ function tile(it) {
     <div class="px ${col}">${fmt(it.close)}</div>
     <div class="ch ${col}">${sgn(it.chg)}${fmt(it.chg)} ${sgn(it.chg_pct)}${it.chg_pct.toFixed(2)}%</div>
     ${spark(it.spark, it.spark.at(-1) >= it.spark[0])}
-    <div class="vd"><span class="badge ${it.tone}">${it.verdict}</span><span class="ev">底${it.bottom} 顶${it.top}</span></div>
+    <div class="vd"><span class="badge ${it.tone}"${it.vest ? ` title="盘中预估：用实时价和已成交量拼出今天的K线重算四证；收盘结论 ${it.vclose}，以收盘后为准"` : ''}>${it.vest ? '估·' : ''}${it.verdict}</span><span class="ev">底${it.bottom} 顶${it.top}</span></div>
     <div class="why">${it.reason}</div>
   </a>`;
 }
@@ -59,7 +59,7 @@ setInterval(() => { if (!document.hidden) refresh(); }, 180000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 window.addEventListener('pageshow', e => { if (e.persisted) refresh(); });
 // 手动更新：浏览器直接拉实时行情（腾讯行情 / Binance 公共接口），只刷新价格和涨跌，不触发 Actions。
-// 四证结论按收盘计算，盘中价格只作参考，仍以最近一次收盘结论为准。
+// 四证结论按收盘计算；A股/港股指数另外用盘中价拼出今天的K线做一次预估（标“估”），收盘后以正式结论为准。
 const rbtn = $('#refreshBtn'), rmsg = $('#refreshMsg');
 const say = (t, c = '') => { rmsg.textContent = t; rmsg.className = 'rf-msg ' + c; };
 const hhmm = () => new Date().toTimeString().slice(0, 5);
@@ -129,16 +129,60 @@ async function liveQuotes() {
     }
     if (v && v[0] > 0 && isFinite(v[1]) && isFinite(v[2])) { Object.assign(it, {close: v[0], chg: v[1], chg_pct: v[2], live: true, est, ts: stamp()}); n++; }
   }
-  return [n, items.length];
+  const m = await intraday(items, q).catch(() => 0);
+  return [n, items.length, m];
+}
+// ---- 盘中预估：A股 / 港股指数用腾讯完整行情（开高低、成交量、时间）拼出今天的K线，在浏览器里重算四证 ----
+let HIST = null;
+async function hist() {
+  if (!HIST) HIST = await fetch('static/demo/hist.json?t=' + Date.now(), {cache: 'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null);
+  return HIST;
+}
+const bjMin = () => { const d = new Date(Date.now() + 8 * 3600e3); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+function sessionFrac(mkt) {  // 今天已经过去的交易时间占全天的比例，用来把盘中成交量折算成全天
+  const m = bjMin(), seg = mkt === 'hk' ? [[570, 720], [780, 960]] : [[570, 690], [780, 900]];
+  const tot = seg.reduce((a, s) => a + s[1] - s[0], 0), done = seg.reduce((a, s) => a + Math.max(0, Math.min(m, s[1]) - s[0]), 0);
+  return Math.max(0.05, Math.min(1, done / tot));
+}
+async function intraday(items, q) {
+  if (!window.BTQ4) return 0;
+  const want = items.filter(it => /^s_(sh|sz|bj|hk)/.test(qqCode(it.symbol) || '') && it.live && !it.est);
+  if (!want.length) return 0;
+  const H = await hist(); if (!H || !H.bars) return 0;
+  const full = want.map(it => qqCode(it.symbol).slice(2));
+  await script('https://qt.gtimg.cn/q=' + full.join(',') + '&_=' + Date.now(), 'gbk');
+  let n = 0;
+  for (const it of want) {
+    const code = qqCode(it.symbol).slice(2), raw = window['v_' + code], bars = H.bars[it.symbol];
+    if (!raw || !bars) continue;
+    const f = raw.split('~'), px = +f[3], op = +f[5], hi = +f[33], lo = +f[34], ts = (f[30] || '').replace(/\D/g, '');
+    if (!(px > 0 && op > 0 && hi > 0 && lo > 0) || ts.length < 8) continue;
+    const d = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`, last = bars.d.at(-1);
+    if (d < last) continue;
+    const k = d === last ? bars.d.length - 2 : bars.d.length - 1;  // 用来估量能的“前几天”
+    let vol, vsrc;
+    if (it.symbol.startsWith('sina:') && +f[6] > 0) { vol = +f[6] * 100 / sessionFrac(it.market); vsrc = '已成交量按时间折算全天'; }
+    else { const a = bars.v.slice(Math.max(0, k - 4), k + 1); vol = a.reduce((x, y) => x + y, 0) / (a.length || 1); vsrc = '成交量取近5日均量'; }
+    const r = BTQ4.evaluate(bars, H.cfg, {d, o: op, h: Math.max(hi, px), l: Math.min(lo, px), c: px, v: vol});
+    if (!it.vclose) it.vclose = it.verdict;
+    const tones = {入场: 'go', 离场: 'stop', 减仓: 'warn', 关注: 'wait', 观望: 'idle'};
+    Object.assign(it, {verdict: r[0], tone: tones[r[0]], reason: '盘中预估 · ' + r[2] + (r[6] && r[6].aw && r[4] >= 3 ? `，成本线 ${fmt(r[6].aw)}` : '') + '（' + vsrc + '）', bottom: r[3], top: r[4], vest: true});
+    n++;
+  }
+  if (n) {  // 顶部计数跟着预估结论走
+    const all = DATA.groups.flatMap(g => g.items).filter(it => !it.error);
+    DATA.counts = Object.fromEntries(['入场', '离场', '减仓', '关注', '观望'].map(v => [v, all.filter(it => it.verdict === v).length]));
+  }
+  return n;
 }
 rbtn && (rbtn.onclick = async () => {
   if (!DATA) return;
   rbtn.disabled = true; say('正在获取实时行情…');
   try {
     await refresh();  // 先看有没有新的收盘结论发布
-    const [n, total] = await liveQuotes();
+    const [n, total, m] = await liveQuotes();
     render();
-    say(n ? `已更新 ${n}/${total} 个实时价 ${hhmm()}（结论仍按最近收盘）` : '实时行情暂时取不到，显示的是最近收盘数据', n ? 'ok' : 'err');
+    say(n ? `已更新 ${n}/${total} 个实时价 ${hhmm()}` + (m ? `，${m} 个A股/港股指数按盘中价预估了操作（标“估”，以收盘为准）` : '（结论仍按最近收盘）') : '实时行情暂时取不到，显示的是最近收盘数据', n ? 'ok' : 'err');
   } catch (e) { say('更新失败：' + e.message, 'err'); }
   finally { rbtn.disabled = false; }
 });

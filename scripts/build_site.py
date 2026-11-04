@@ -3,7 +3,7 @@
     python scripts/build_site.py --out site                 # markets.yaml 里的全部标的
     python scripts/build_site.py --out site --webhook URL   # 顺便把 入场/离场/减仓 推送出去
 """
-import argparse, json, re, shutil, sys, urllib.request
+import argparse, datetime, json, re, shutil, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from btq.server import app, WEB  # noqa: E402
 
 BARS_KEEP = 1500   # detail chart history kept in the static copy (analysis still uses the full history)
+HIST_KEEP = 300    # 首屏“盘中预估”在浏览器里重算四证用的日线根数（与全量历史结果一致，已用 node 对过）
+LIVE_RE = re.compile(r"^(sina:|csindex:000|hksina:(HSI|HSTECH|HSCEI)$)")   # 腾讯完整行情能给出开高低和时间的标的
 
 
 def key(s):
@@ -47,11 +49,20 @@ def main():
     print(f"overview: {ov['total']} 个标的，{ov['errors']} 个失败，{ov['seconds']} 秒", ov["counts"])
     items = [it for g in ov["groups"] for it in g["items"] if not it.get("error")]
 
+    HIST = {}
+
     def detail(it):
         s = it["symbol"]
         try:
             body = dict(symbol=s, preset=a.preset)
             b = c.get("/api/bars", params=dict(symbol=s)).raise_for_status().json()
+            if LIVE_RE.match(s):
+                cs = b["candles"][-HIST_KEEP:]
+                vol = {x["time"]: x["value"] for x in b["volume"]}
+                g = lambda x: float(f"{x:.7g}")
+                HIST[s] = dict(d=[datetime.datetime.fromtimestamp(x["time"], datetime.timezone.utc).strftime("%Y-%m-%d") for x in cs],
+                               o=[g(x["open"]) for x in cs], h=[g(x["high"]) for x in cs], l=[g(x["low"]) for x in cs],
+                               c=[g(x["close"]) for x in cs], v=[g(vol.get(x["time"]) or 0) for x in cs])
             for k in ("candles", "volume", "dif", "dea", "hist", "vma5", "vma10"):
                 b[k] = b[k][-BARS_KEEP:]
             b["ma"] = {n: v[-BARS_KEEP:] for n, v in b["ma"].items()}
@@ -65,7 +76,10 @@ def main():
 
     with ThreadPoolExecutor(a.workers) as ex:
         ok = [s for s in ex.map(detail, items) if s]
-    dump(demo / "presets.json", c.get("/api/presets").json())
+    presets = c.get("/api/presets").json()
+    dump(demo / "presets.json", presets)
+    cfg = next((p["params"] for p in presets if p["key"] == a.preset), None)
+    dump(demo / "hist.json", dict(preset=a.preset, cfg=cfg, bars=HIST))
     scan = [dict(symbol=it["symbol"], date=it["date"], price=it["close"], change_pct=it["chg_pct"], bottom=it["bottom"],
                  bottom_fired=it["verdict"] == "入场", top=it["top"], top_fired=it["verdict"] == "离场",
                  composite=it["composite"], bias=it["bias"]) for it in items]

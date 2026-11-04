@@ -44,7 +44,7 @@ function render() {
   $('#groups').innerHTML = d.groups.map(g => {
     const items = g.items.filter(it => FILTER === 'all' || it.verdict === FILTER);
     if (!items.length) return '';
-    return `<section class="grp" style="--n:${Math.min(items.length, 13)}"><h2>${g.name}</h2><div class="grid">${items.map(tile).join('')}</div></section>`;
+    return `<h2>${g.name}</h2><div class="grid">${items.map(tile).join('')}</div>`;
   }).join('') || '<div class="loading">今天没有符合条件的标的。</div>';
 }
 document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {

@@ -89,20 +89,23 @@ def main():
 
     levels = [x.strip() for x in a.levels.replace("，", ",").split(",") if x.strip()]
     hits = [it for it in items if it["verdict"] in levels]
-    sig = sorted(f"{it['symbol']}|{it['date']}|{it['verdict']}" for it in hits)
+    # 每个收盘点推一次：A股/港股/美股的数据日期 + 达到推送级别的信号；没有信号也发一条收盘日报
+    closes = [f"{k}|{v}" for k, v in sorted(ov.get("asof", {}).items()) if k != "全球"]
+    sig = closes + sorted(f"{it['symbol']}|{it['date']}|{it['verdict']}" for it in hits)
     dump(demo / "pushed.json", dict(sig=sig))
-    if hits and a.site_url and not a.test_push:  # 备用定时会重复跑，同一批信号只推一次
+    send = True
+    if a.site_url and not a.test_push:  # 备用定时、代码提交都会重跑，同一个收盘点只推一次
         try:
             import httpx
             prev = httpx.get(a.site_url.rstrip("/") + "/static/demo/pushed.json", timeout=15).json().get("sig")
-            if prev == sig:
-                print("same signals already pushed, skip")
-                hits = []
+            if prev == sig or (prev and not hits and all(x in prev for x in closes)):
+                print("same close already pushed, skip")
+                send = False
         except Exception as ex:
             print("dedupe check failed:", ex)
     if not a.webhook:
         print("no webhook configured, skip push")
-    if a.webhook and (hits or a.test_push):
+    if a.webhook and (send or a.test_push):
         from btq.notify import post, report
         try:
             post(a.webhook, card=report(ov, hits, a.site_url, a.test_push))

@@ -57,4 +57,36 @@ async function refresh() {
 setInterval(() => { if (!document.hidden) refresh(); }, 180000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 window.addEventListener('pageshow', e => { if (e.persisted) refresh(); });
+// 手动更新：有 GitHub 令牌（⚙ 设置 → 收盘推送）就触发 Actions 重新拉行情，并等新结果上线；没有令牌只重新读一次已发布的数据
+const rbtn = $('#refreshBtn'), rmsg = $('#refreshMsg');
+const say = (t, c = '') => { rmsg.textContent = t; rmsg.className = 'rf-msg ' + c; };
+const hhmm = () => new Date().toTimeString().slice(0, 5);
+rbtn && (rbtn.onclick = async () => {
+  const G = JSON.parse(localStorage.btqPush || '{}');
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const repo = G.repo || (m ? `${m[1]}/${location.pathname.split('/').filter(Boolean)[0]}` : 'luoqianyi/bottom-top-quant');
+  const before = DATA && DATA.generated;
+  rbtn.disabled = true;
+  try {
+    if (!G.token) {
+      await refresh();
+      if (DATA && DATA.generated !== before) return say('已载入最新数据 ' + hhmm(), 'ok');
+      say('已是最新发布的数据。要立刻从行情源重新拉取，请在 ⚙ 设置 → 收盘推送 里填 GitHub 令牌。');
+      return;
+    }
+    const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/market-close.yml/dispatches`, {method: 'POST',
+      headers: {Authorization: 'Bearer ' + G.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'},
+      body: JSON.stringify({ref: 'main', inputs: {test_push: 'false'}})});
+    if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? '令牌无效或没有 Actions 写权限' : 'GitHub 返回 ' + r.status);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 10 * 60e3) {
+      say(`正在拉取行情并生成结论… ${Math.round((Date.now() - t0) / 1000)} 秒（通常 3 分钟左右）`);
+      await new Promise(f => setTimeout(f, 15000));
+      const d = await load();
+      if (d.generated !== before) { DATA = d; render(); return say('已更新 ' + hhmm(), 'ok'); }
+    }
+    say('还没出来，可能在排队。稍后会自动刷新。', 'err');
+  } catch (e) { say('更新失败：' + e.message, 'err'); }
+  finally { rbtn.disabled = false; }
+});
 })();

@@ -33,7 +33,7 @@ async function api(path, body) {
   return demoApi(path, body);
 }
 async function demoApi(path, body) {
-  const get = async f => { const r = await fetch('static/demo/' + f); if (!r.ok) throw new Error('演示数据里没有这个标的：' + (body?.symbol || '')); return r.json(); };
+  const get = async f => { const r = await fetch('static/demo/' + f, {cache: 'no-cache'}); if (!r.ok) throw new Error('演示数据里没有这个标的：' + (body?.symbol || '')); return r.json(); };
   if (!S.demoIndex) S.demoIndex = await get('index.json');
   const sym = body?.symbol || new URLSearchParams(path.split('?')[1] || '').get('symbol');
   if (path.startsWith('/api/presets')) return get('presets.json');

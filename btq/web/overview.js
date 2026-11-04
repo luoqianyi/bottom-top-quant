@@ -10,7 +10,7 @@ async function load() {
     const r = await fetch('/api/overview');
     if (r.ok && (r.headers.get('content-type') || '').includes('json')) return r.json();
   } catch (e) {}
-  const r = await fetch('static/demo/overview.json', {cache: 'no-cache'});
+  const r = await fetch('static/demo/overview.json?t=' + Date.now(), {cache: 'no-store'});  // 绕过 Pages 的 10 分钟缓存
   return r.json();
 }
 function spark(arr, up) {
@@ -50,4 +50,11 @@ document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#filters button').forEach(x => x.classList.remove('on')); b.classList.add('on'); FILTER = b.dataset.f; render();
 });
 load().then(d => { DATA = d; render(); }).catch(e => { $('#groups').innerHTML = `<div class="loading">加载失败：${e.message}</div>`; });
+// 自动刷新：每 3 分钟、以及切回页面时检查一次，有新数据就重绘（不用手动刷新）
+async function refresh() {
+  try { const d = await load(); if (!DATA || d.generated !== DATA.generated) { DATA = d; render(); } } catch (e) {}
+}
+setInterval(() => { if (!document.hidden) refresh(); }, 180000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+window.addEventListener('pageshow', e => { if (e.persisted) refresh(); });
 })();

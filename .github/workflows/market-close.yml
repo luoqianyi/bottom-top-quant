@@ -32,7 +32,10 @@ jobs:
           WEBHOOK: ${{ secrets.ALERT_WEBHOOK || vars.ALERT_WEBHOOK }}
           LEVELS: ${{ vars.ALERT_LEVELS || '入场,离场,减仓' }}
           TEST_PUSH: ${{ inputs.test_push && '--test-push' || '' }}
-        run: python scripts/build_site.py --out site --webhook "$WEBHOOK" --levels "$LEVELS" --site-url "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/" $TEST_PUSH
+        # 数据源的原生库偶尔崩溃（退出码 133），失败就隔 30 秒再跑一次
+        run: |
+          ARGS=(--out site --webhook "$WEBHOOK" --levels "$LEVELS" --site-url "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/" $TEST_PUSH)
+          python scripts/build_site.py "${ARGS[@]}" || { echo "retry in 30s"; sleep 30; python scripts/build_site.py "${ARGS[@]}"; }
       - name: publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:

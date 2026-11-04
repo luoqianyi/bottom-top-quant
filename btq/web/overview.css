@@ -51,3 +51,4 @@ a.tile{display:block;text-decoration:none;color:inherit}
 .rf-msg.ok{color:#1fbf75}.rf-msg.err{color:#f04848}
 #refreshBtn[disabled]{opacity:.55;cursor:progress}
 .tile .lv{position:absolute;top:6px;left:8px;font-size:10px;color:#1fbf75;border:1px solid rgba(31,191,117,.4);border-radius:6px;padding:0 4px}
+.tile .lv.est{color:#d8a84a;border-color:rgba(216,168,74,.45)}

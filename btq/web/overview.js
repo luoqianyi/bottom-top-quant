@@ -24,7 +24,7 @@ function tile(it) {
   if (it.error) return `<div class="tile f err" data-v="err" title="${it.error}"><div class="nm">${it.name}</div><div class="px">--</div><div class="ch">数据暂缺</div></div>`;
   const cls = it.chg_pct > 0 ? 'u' : it.chg_pct < 0 ? 'd' : 'f', col = it.chg_pct > 0 ? 'up' : it.chg_pct < 0 ? 'dn' : '';
   return `<a class="tile ${cls} ${it.tone}" data-v="${it.verdict}" href="${href}">
-    ${it.live ? '<span class="lv" title="盘中实时价，结论仍按最近收盘">实时</span>' : ''}
+    ${it.live ? (it.est ? '<span class="lv est" title="用跟踪ETF的涨跌幅估算，结论仍按最近收盘">估算</span>' : '<span class="lv" title="盘中实时价，结论仍按最近收盘">实时</span>') : ''}
     ${it.no_volume ? '<span class="nv" title="没有成交量，地量/天量一证无法判断">无量</span>' : ''}
     <div class="nm">${it.name}</div>
     <div class="px ${col}">${fmt(it.close)}</div>
@@ -63,40 +63,72 @@ window.addEventListener('pageshow', e => { if (e.persisted) refresh(); });
 const rbtn = $('#refreshBtn'), rmsg = $('#refreshMsg');
 const say = (t, c = '') => { rmsg.textContent = t; rmsg.className = 'rf-msg ' + c; };
 const hhmm = () => new Date().toTimeString().slice(0, 5);
-const QQ = {'^NDX': 'usNDX', '^GSPC': 'usINX', '^DJI': 'usDJI', 'CNY=X': 'whUSDCNY'};
+// 实时源（全部可在浏览器跨域加载）：腾讯 qt.gtimg.cn（A股/港股/美股指数、海外指数 gz*、外盘期货 hf_*、外汇 wh*）、
+// 新浪期货分时 jsonp（小纳指、A50）、东方财富 jsonp（中证2000、恒生医疗、金交所Au99.99、印度SENSEX）、Binance（BTC）
+const QQ = {'^NDX': 's_usNDX', '^GSPC': 's_usINX', '^DJI': 's_usDJI', 'CNY=X': 'whUSDCNY', 'DX-Y.NYB': 'whUSDX',
+  '^N225': 'gzN225', '^KS11': 'gzKS11', '^TWII': 'gzTWII', '^GDAXI': 'gzGDAXI', '^FTSE': 'gzFTSE', 'GC=F': 'hf_GC', 'CL=F': 'hf_CL'};
+const SINA_MIN = {'NQ=F': 'NQ', 'sinafut:CHA50CFD': 'CHA50CFD'};
+const EM = {'csindex:932000': '2.932000', 'hksina:HSHCI': '124.HSHCI', 'sge:Au99.99': '118.AU9999', '^BSESN': '100.SENSEX'};
+const EST = {'csindex:932000': 's_sh563300', 'sge:Au99.99': 's_sh518880'};  // 东财取不到时用跟踪 ETF 的涨跌幅估算
 function qqCode(sym) {
-  if (QQ[sym]) return QQ[sym].startsWith('wh') ? QQ[sym] : 's_' + QQ[sym];
+  if (QQ[sym]) return QQ[sym];
   let m = sym.match(/^sina:((sh|sz|bj)\d{6})$/); if (m) return 's_' + m[1];
   m = sym.match(/^csindex:(000\d{3})$/); if (m) return 's_sh' + m[1];
   m = sym.match(/^hksina:(HSI|HSTECH|HSCEI)$/); if (m) return 's_hk' + m[1];
   return null;
 }
-function qqLoad(codes) {  // 用 <script> 加载，不受跨域限制；返回 {code: 字段数组}
+function qqParse(c, v) {
+  const f = v.split(c.startsWith('hf_') ? ',' : '~');
+  if (c.startsWith('hf_')) { const px = +f[0], pre = +f[7]; return [px, px - pre, +f[1]]; }
+  if (c.startsWith('wh')) return [+f[3], +f[12], +f[13]];
+  return [+f[3], +f[4], +f[5]];  // s_*、gz* 都是 价格~涨跌~涨跌幅
+}
+function script(src, charset, ms = 6000) {  // 加载跨域脚本，超时或出错都当作没取到
   return new Promise(res => {
-    const el = document.createElement('script'); el.charset = 'gbk';
-    el.src = 'https://qt.gtimg.cn/q=' + codes.join(',') + '&_=' + Date.now();
-    const done = () => { const o = {}; codes.forEach(c => { const v = window['v_' + c]; if (v) o[c] = v.split('~'); }); el.remove(); res(o); };
-    el.onload = done; el.onerror = done; document.head.appendChild(el);
+    const el = document.createElement('script'); if (charset) el.charset = charset; el.src = src;
+    const t = setTimeout(() => fin(false), ms), fin = ok => { clearTimeout(t); el.remove(); res(ok); };
+    el.onload = () => fin(true); el.onerror = () => fin(false); document.head.appendChild(el);
   });
 }
+async function qqLoad(codes) {
+  if (!codes.length) return {};
+  await script('https://qt.gtimg.cn/q=' + codes.join(',') + '&_=' + Date.now(), 'gbk');
+  const o = {}; codes.forEach(c => { const v = window['v_' + c]; if (v) o[c] = qqParse(c, v); }); return o;
+}
+async function sinaMin(code) {
+  const v = '_btq' + code;
+  await script(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20${v}=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${code}&_=${Date.now()}`);
+  const rows = window[v] && window[v].minLine_1d; if (!rows || !rows.length) return null;
+  const pre = +rows[0][1], px = +rows.at(-1)[rows.length > 1 ? 1 : 5];
+  return pre > 0 && px > 0 ? [px, px - pre, (px / pre - 1) * 100] : null;
+}
+async function emLoad(secids) {
+  if (!secids.length) return {};
+  let got = null; window.btqEM = d => { got = d; };
+  await script('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f12,f13&cb=btqEM&secids=' + secids.join(',') + '&_=' + Date.now());
+  const o = {}; ((got && got.data && got.data.diff) || []).forEach(x => { if (typeof x.f2 === 'number') o[x.f13 + '.' + x.f12] = [x.f2, x.f4, x.f3]; });
+  return o;
+}
+const today = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);  // 北京时间日期
 async function liveQuotes() {
   const items = DATA.groups.flatMap(g => g.items).filter(it => !it.error);
-  const codes = [...new Set(items.map(it => qqCode(it.symbol)).filter(Boolean))];
-  const q = codes.length ? await qqLoad(codes) : {}, n0 = Object.keys(q).length;
+  const has = m => items.filter(it => m[it.symbol]);
+  const codes = [...new Set([...items.map(it => qqCode(it.symbol)), ...has(EST).map(it => EST[it.symbol])].filter(Boolean))];
+  const [q, em, mins, btc] = await Promise.all([
+    qqLoad(codes), emLoad(has(EM).map(it => EM[it.symbol])),
+    Promise.all(has(SINA_MIN).map(async it => [it.symbol, await sinaMin(SINA_MIN[it.symbol])])),
+    fetch('https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT', {cache: 'no-store'}).then(r => r.json()).catch(() => null)]);
+  const live = Object.fromEntries(mins.filter(x => x[1]));
+  if (btc && +btc.lastPrice > 0) live['BTC-USD'] = [+btc.lastPrice, +btc.priceChange, +btc.priceChangePercent];
   let n = 0;
   for (const it of items) {
-    const c = qqCode(it.symbol), f = c && q[c];
-    let px, chg, pct;
-    if (f && c.startsWith('wh')) { px = +f[3]; chg = +f[12]; pct = +f[13]; }
-    else if (f) { px = +f[3]; chg = +f[4]; pct = +f[5]; }
-    if (px > 0) { Object.assign(it, {close: px, chg, chg_pct: pct, live: true}); n++; }
+    let v = live[it.symbol] || (qqCode(it.symbol) && q[qqCode(it.symbol)]) || (EM[it.symbol] && em[EM[it.symbol]]), est = false;
+    if (!v && EST[it.symbol] && q[EST[it.symbol]] && it.date < today() && !it.live) {  // 只在还没有今天收盘数据时估算
+      const pct = q[EST[it.symbol]][2], px = it.close * (1 + pct / 100); v = [px, px - it.close, pct]; est = true;
+    }
+    if (v && v[0] > 0 && isFinite(v[1]) && isFinite(v[2])) { Object.assign(it, {close: v[0], chg: v[1], chg_pct: v[2], live: true, est}); n++; }
   }
-  const btc = items.find(it => it.symbol === 'BTC-USD');
-  if (btc) try {
-    const r = await (await fetch('https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT', {cache: 'no-store'})).json();
-    Object.assign(btc, {close: +r.lastPrice, chg: +r.priceChange, chg_pct: +r.priceChangePercent, live: true}); n++;
-  } catch (e) {}
-  return [n, items.length, n0];
+  return [n, items.length];
 }
 rbtn && (rbtn.onclick = async () => {
   if (!DATA) return;

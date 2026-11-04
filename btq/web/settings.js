@@ -60,7 +60,7 @@ function mount() {
     </div>
     <div class="st-sec">
       <h4>🔔 收盘推送 <span class="st-pill" id="stPushState">检查中</span></h4>
-      <div class="st-note" style="margin:0">每个工作日 15:40 / 16:40 / 05:40（北京时间）收盘后由 GitHub Actions 自动运行，把选中结论的标的推到飞书 / 钉钉 / 企业微信机器人。</div>
+      <div class="st-note" style="margin:0">每个交易日收盘后由 GitHub Actions 运行（触发时间见下方「收盘定时」），把选中结论的标的推到飞书 / 钉钉 / 企业微信机器人。</div>
       <label>机器人 Webhook 地址<input id="stHook" spellcheck="false" autocomplete="off" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."></label>
       <div>${LEVELS.map(l => `<span class="ck"><input type="checkbox" data-lv="${l}"> ${l}</span>`).join('')}</div>
       <label>仓库<input id="stRepo" spellcheck="false" autocomplete="off"></label>
@@ -69,6 +69,15 @@ function mount() {
       <div class="st-msg" id="stPushMsg"></div>
       <div class="st-note">「保存到仓库」会把 Webhook 和推送级别写成仓库的 Actions 变量 ALERT_WEBHOOK / ALERT_LEVELS（不会公开显示，日志里也不打印）。令牌只存在本浏览器，用来调用 GitHub API；不想给令牌，也可以手动去 <a id="stVarLink" target="_blank" rel="noopener">仓库 → Settings → Secrets and variables → Actions</a> 新建 secret ALERT_WEBHOOK。
       <br><a id="stTokLink" target="_blank" rel="noopener" href="https://github.com/settings/personal-access-tokens/new">创建令牌</a> · <a id="stRunsLink" target="_blank" rel="noopener">运行记录</a></div>
+    </div>
+    <div class="st-sec">
+      <h4>⏰ 收盘定时 <span class="st-pill" id="stCronState">未读取</span></h4>
+      <div class="st-note" style="margin:0">GitHub 自带定时经常被丢弃，改由 cron-job.org 按时调用 GitHub 接口触发构建。这里可以直接改触发时间、开关任务（北京时间）。</div>
+      <label>cron-job.org API Key（控制台 Settings → API）<input id="stCronKey" type="password" spellcheck="false" autocomplete="off"></label>
+      <div id="stCronJobs"></div>
+      <div class="st-btns"><button class="pri" id="stCronLoad">读取定时</button><button id="stCronNew">一键创建两个定时</button></div>
+      <div class="st-msg" id="stCronMsg"></div>
+      <div class="st-note">「一键创建」会用上面填的 GitHub 令牌建两个任务：周一到周五 16:20（A股、港股收盘后），周二到周六 05:20（美股收盘后）。<a target="_blank" rel="noopener" href="https://console.cron-job.org/jobs">打开 cron-job.org 控制台</a></div>
     </div>
     <div class="st-note">所有设置只存在这台设备的浏览器里，换设备或清缓存需要重新填。内容仅作研究学习，不构成投资建议。</div>
   </div>`;
@@ -134,9 +143,61 @@ function mount() {
     try { await dispatch(false); msg('#stPushMsg', '已触发。大约 2 分钟后页面更新，有符合级别的标的就会推送。', 'ok'); } catch (e) { msg('#stPushMsg', '失败：' + e.message, 'err'); } };
   fillG();
   d._status = status;
+
+  // ---------- 收盘定时（cron-job.org REST API，允许浏览器跨域）
+  const C = Object.assign({key: ''}, ld('btqCron'));
+  const WD = ['日', '一', '二', '三', '四', '五', '六'];
+  $('#stCronKey').value = C.key;
+  async function cj(path, method = 'GET', body) {
+    C.key = $('#stCronKey').value.trim(); localStorage.btqCron = JSON.stringify(C);
+    if (!C.key) throw new Error('先填 cron-job.org API Key');
+    const r = await fetch('https://api.cron-job.org' + path, {method, headers: {Authorization: 'Bearer ' + C.key, 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+    const t = await r.text(); if (!r.ok) throw new Error(`cron-job.org ${r.status}` + (r.status === 401 ? '（API Key 不对）' : r.status === 429 ? '（请求太频繁，稍后再试）' : '') + (t ? '：' + t.slice(0, 120) : ''));
+    return t ? JSON.parse(t) : {};
+  }
+  const two = n => String(n).padStart(2, '0');
+  function row(j) {
+    const s = j.schedule || {}, h = (s.hours || [0])[0], m = (s.minutes || [0])[0], wd = s.wdays || [-1];
+    return `<div class="st-sec" data-job="${j.jobId}" style="margin:8px 0;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">${esc(j.title || j.url)}</b><span class="ck" style="margin:0"><input type="checkbox" data-en ${j.enabled ? 'checked' : ''}> 启用</span></div>
+      <label>时间（北京时间）<input type="time" data-t value="${two(h < 0 ? 0 : h)}:${two(m < 0 ? 0 : m)}"></label>
+      <div>${WD.map((w, i) => `<span class="ck" style="margin-right:6px"><input type="checkbox" data-wd="${i}" ${wd.includes(-1) || wd.includes(i) ? 'checked' : ''}>${w}</span>`).join('')}</div>
+      <div class="st-btns"><button data-save>保存</button><span class="st-msg" data-m style="margin:0;align-self:center"></span></div>
+      ${j.lastStatus !== undefined && j.lastExecution ? `<div class="st-note">上次执行 ${new Date(j.lastExecution * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai', hour12: false})} · ${j.lastStatus === 1 ? '成功' : '状态码 ' + j.lastStatus}</div>` : ''}
+    </div>`;
+  }
+  async function loadJobs() {
+    msg('#stCronMsg', '读取中…');
+    try {
+      const jobs = ((await cj('/jobs')).jobs || []).filter(j => /actions\/workflows/.test(j.url || '') || /^btq/.test(j.title || ''));
+      $('#stCronJobs').innerHTML = jobs.map(row).join('');
+      $('#stCronState').textContent = jobs.length ? `${jobs.filter(j => j.enabled).length}/${jobs.length} 个启用` : '没有定时'; $('#stCronState').className = 'st-pill' + (jobs.some(j => j.enabled) ? ' on' : '');
+      msg('#stCronMsg', jobs.length ? '' : '还没有触发构建的定时，可以点「一键创建两个定时」。', jobs.length ? '' : 'err');
+      document.querySelectorAll('[data-job]').forEach(el => el.querySelector('[data-save]').onclick = async () => {
+        const [h, m] = el.querySelector('[data-t]').value.split(':').map(Number), wd = [...el.querySelectorAll('[data-wd]:checked')].map(c => +c.dataset.wd);
+        const out = el.querySelector('[data-m]');
+        if (!wd.length) { out.textContent = '至少选一天'; out.className = 'st-msg err'; return; }
+        out.textContent = '保存中…'; out.className = 'st-msg';
+        try { await cj('/jobs/' + el.dataset.job, 'PATCH', {job: {enabled: el.querySelector('[data-en]').checked, schedule: {timezone: 'Asia/Shanghai', hours: [h], minutes: [m], wdays: wd.length === 7 ? [-1] : wd, mdays: [-1], months: [-1]}}});
+          out.textContent = '已保存'; out.className = 'st-msg ok'; } catch (e) { out.textContent = e.message; out.className = 'st-msg err'; }
+      });
+    } catch (e) { msg('#stCronMsg', '失败：' + (e.message === 'Failed to fetch' ? '连不上 cron-job.org' : e.message), 'err'); }
+  }
+  $('#stCronLoad').onclick = loadJobs;
+  $('#stCronNew').onclick = async () => {
+    readG(); saveLocal();
+    if (!G.token) return msg('#stCronMsg', '先在上面「收盘推送」里填 GitHub 令牌', 'err');
+    const mk = (title, h, m, wd) => ({job: {title, enabled: true, saveResponses: false, url: `https://api.github.com/repos/${G.repo}/actions/workflows/market-close.yml/dispatches`,
+      requestMethod: 1, extendedData: {headers: {Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: 'Bearer ' + G.token}, body: '{"ref":"main"}'},
+      schedule: {timezone: 'Asia/Shanghai', hours: [h], minutes: [m], wdays: wd, mdays: [-1], months: [-1]}}});
+    msg('#stCronMsg', '创建中…');
+    try { await cj('/jobs', 'PUT', mk('btq 港A股收盘构建', 16, 20, [1, 2, 3, 4, 5])); await cj('/jobs', 'PUT', mk('btq 美股收盘构建', 5, 20, [2, 3, 4, 5, 6])); await loadJobs(); msg('#stCronMsg', '已创建两个定时。', 'ok'); }
+    catch (e) { msg('#stCronMsg', '失败：' + e.message, 'err'); }
+  };
+  d._cron = () => { if (C.key) loadJobs(); };
 }
 function msg(sel, t, cls) { const el = $(sel); el.textContent = t; el.className = 'st-msg ' + (cls || ''); }
-function open() { mount(); $('#stMask').hidden = false; $('#stMask')._status(); }
+function open() { mount(); $('#stMask').hidden = false; $('#stMask')._status(); $('#stMask')._cron(); }
 function close() { $('#stMask').hidden = true; if (window.btqReloadLLM) window.btqReloadLLM(); }
 window.btqSettings = open;
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#stMask') && !$('#stMask').hidden) close(); });
